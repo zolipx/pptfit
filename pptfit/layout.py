@@ -23,6 +23,7 @@ VISIBLE_KINDS = ("picture", "line", "chart", "table", "smartart")
 TOL = 1.0          # pt
 LINE_MIN = 1.5     # pt: a line's box has zero height or width; overlap tests give it this stroke thickness
 GRAZE = 0.1        # an original that only grazed an obstacle (<= 10% of its word area) may not overlap it more
+BACKDROP = 0.15    # an obstacle covering >= 15% of the slide is background art, judged against the whole text block
 FLOOR_BODY, FLOOR_TITLE = 0.8, 0.9
 
 
@@ -197,6 +198,10 @@ def constraints(slide_els, words, slide_w, slide_h):
         for v in vis:
             if v["id"] in (eid, con["container"].get(eid)) or excess(e["bbox"], v["bbox"]) <= 1:
                 continue  # its own box, its container, or something it sits on
+            if area(v["bbox"]) >= BACKDROP * slide_w * slide_h:  # text routinely runs across background art and watermarks
+                if inter(ink, v["bbox"]) <= TOL:
+                    clear.append(["backdrop", v["id"], 0.0])
+                continue
             hit0 = word_hit(owned[eid], obox(v))  # a title whose last glyph box grazes the start of a rule
             if hit0 <= TOL or hit0 <= GRAZE * sum(area(w["box"]) for w in owned[eid]):
                 clear.append(["box", v["id"], round(hit0, 1)])
@@ -244,7 +249,7 @@ def check(con, cand_els, words, expected_text=None, frozen_ids=(), floors=(FLOOR
             v.append({"code": "INK_OUT", "id": eid, "other": cid, "amount": round(excess(ink, box[cid]), 1)})
         for c in con["ink_clear"].get(eid, []):
             kind, oid, before = c[0], c[1], (c[2] if len(c) > 2 else 0.0)
-            ob = obx.get(oid) if kind == "box" else inks.get(oid)
+            ob = obx.get(oid) if kind in ("box", "backdrop") else inks.get(oid)
             hit = (word_hit(owned[eid], ob) if kind == "box" else inter(ink, ob)) if ob else 0.0
             if hit > 1.25 * before + TOL:
                 v.append({"code": "INK_HIT", "id": eid, "other": oid, "amount": round((hit - before) ** 0.5, 1)})

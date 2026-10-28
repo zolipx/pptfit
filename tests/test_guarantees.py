@@ -172,6 +172,12 @@ def test_line_and_ragged_text_obstacles():
     assert L.check(con, els, graze)[0] == []
     longer = [_w("Plan", [62, 20, 60, 25], 0), _w("layout", [126, 20, 70, 25], 0)] + orig[1:]
     assert ("t", "ln") in {(x["id"], x.get("other")) for x in L.check(con, els, longer)[0] if x["code"] == "INK_HIT"}
+    # background art (>= 15% of the slide) is judged on the whole block: the block already reached it, so words may
+    art = [_el("art", "picture", [200, 230, 520, 175]), _el("t2", "text", [50, 200, 220, 60], text="一 二")]
+    blk = [_w("一", [50, 200, 190, 15], 0), _w("二", [50, 230, 70, 15], 1)]
+    con = L.constraints(art, blk, 720, 405)
+    grown = [blk[0], _w("Two", [50, 230, 80, 15], 1), _w("more", [135, 230, 120, 15], 1)]
+    assert not [x for x in L.check(con, art, grown)[0] if x["code"] == "INK_HIT"]
     # a caption that sat half on a photo may keep sitting on it
     photo = [_el("ph", "picture", [100, 200, 200, 100]), _el("cap", "text", [250, 280, 200, 30], text="说明")]
     cap0 = [_w("说明", [250, 285, 100, 20], 0)]
