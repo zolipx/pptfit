@@ -228,6 +228,8 @@ class Deck:
     def add_note(self, slide_no, lines):
         """Append lines to the speaker notes of a slide (1-based)."""
         tf = self.prs.slides[slide_no - 1].notes_slide.notes_text_frame
+        if tf is None:
+            raise ValueError("slide %d: its notes page has no text body, so notes cannot be added" % slide_no)
         for line in lines:
             tf.add_paragraph().text = line
 

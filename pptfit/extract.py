@@ -89,13 +89,10 @@ def fill_line(el):
 def theme_fonts(prs):
     out = {"+mj-lt": "Calibri", "+mn-lt": "Calibri", "+mj-ea": "", "+mn-ea": ""}
     blob = None
-    try:
-        for part in prs.part.package.iter_parts():
-            if str(part.partname).startswith("/ppt/theme/"):
-                blob = part.blob
-                break
-    except Exception:
-        return out
+    for part in prs.part.package.iter_parts():
+        if str(part.partname).startswith("/ppt/theme/"):
+            blob = part.blob
+            break
     if not blob:
         return out
     root = etree.fromstring(blob)
@@ -227,7 +224,7 @@ def kind_of(shape, el, text):
     prst = prst_of(el)
     try:
         st = int(shape.shape_type) if shape.shape_type is not None else None
-    except Exception:
+    except NotImplementedError:  # python-pptx has no type for some shapes
         st = None
     if prst == "line" or st == 9:
         return "line"
@@ -239,7 +236,7 @@ def chart_strings(shape):
     out = []
     try:
         el = shape.chart._element
-    except Exception:
+    except ValueError:  # a graphic frame without a chart
         return out
     for p in el.iter(qa("p")):  # a paragraph as a whole: titles are often split into runs
         text = "".join(t.text or "" for t in p.iter(qa("t")))
@@ -266,7 +263,7 @@ def walk(container, prefix, xf, theme, slide_area, out, path_ids):
             try:
                 off, ext = (int(shape.left), int(shape.top)), (int(shape.width), int(shape.height))
                 choff = chext = None
-            except Exception:
+            except TypeError:  # a placeholder with no position of its own or inherited: nothing to place
                 continue
         else:
             off, ext, choff, chext = geo
@@ -346,10 +343,8 @@ def extract(path):
         shapes += inherited
         notes = ""
         if slide.has_notes_slide:
-            try:
-                notes = slide.notes_slide.notes_text_frame.text or ""
-            except Exception:
-                notes = ""
+            tf = slide.notes_slide.notes_text_frame  # None when the notes page has no body placeholder
+            notes = (tf.text or "") if tf is not None else ""
         slides.append({"index": i, "notes": notes, "shapes": shapes})
     return {"slide_w": round(sw, 3), "slide_h": round(sh, 3), "theme": theme, "slides": slides}
 

@@ -158,8 +158,9 @@ def make_units(pptx_path):
     for eid, sh in inherited_index(prs).items():
         add_txbody(eid, sh._element.find("{http://schemas.openxmlformats.org/presentationml/2006/main}txBody"))
     for i, slide in enumerate(prs.slides, 1):
-        if slide.has_notes_slide:
-            add_txbody("s%d#notes" % i, slide.notes_slide.notes_text_frame._txBody)
+        tf = slide.notes_slide.notes_text_frame if slide.has_notes_slide else None
+        if tf is not None:
+            add_txbody("s%d#notes" % i, tf._txBody)
     return units
 
 
