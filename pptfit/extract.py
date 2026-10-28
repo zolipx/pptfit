@@ -68,28 +68,31 @@ def fill_line(el):
     sp = sppr(el)
     fill = line = None
     vis_f = vis_l = False
+    own_fill = own_line = False  # the shape states its own fill / line colour: the theme style does not apply
     if sp is not None:
         if sp.find(qa("noFill")) is None:
             for tag, key in (("solidFill", None), ("gradFill", "grad"), ("blipFill", "blip"), ("pattFill", "patt")):
                 n = sp.find(qa(tag))
                 if n is not None:
+                    own_fill = True
                     vis_f = not faint(n)
                     fill = key or color_of(n)
                     break
         ln = sp.find(qa("ln"))
         if ln is not None and ln.find(qa("noFill")) is None:
             sf = ln.find(qa("solidFill"))
+            own_line = sf is not None
             if (sf is not None and not faint(sf)) or (sf is None and ln.get("w") and int(ln.get("w") or 0) > 0):
                 vis_l = True
                 line = color_of(sf) if sf is not None else "default"
     style = el.find(qp("style"))
     if style is not None:
-        if not vis_f and (sp is None or sp.find(qa("noFill")) is None):
+        if not vis_f and not own_fill and (sp is None or sp.find(qa("noFill")) is None):
             fr = style.find(qa("fillRef"))
             if fr is not None and fr.get("idx") not in (None, "0"):
                 vis_f, fill = True, "style:" + fr.get("idx")
         explicit_no = sp is not None and sp.find(qa("ln")) is not None and sp.find(qa("ln")).find(qa("noFill")) is not None
-        if not vis_l and not explicit_no:
+        if not vis_l and not explicit_no and not own_line:
             lr = style.find(qa("lnRef"))
             if lr is not None and lr.get("idx") not in (None, "0"):
                 vis_l, line = True, line or ("style:" + lr.get("idx"))
