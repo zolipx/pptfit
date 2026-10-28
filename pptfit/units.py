@@ -33,23 +33,27 @@ R_DM = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}dm"
 qa = lambda t: "{%s}%s" % (A, t)
 
 
+def walk_ids(shapes, prefix, out, placeholders=True):
+    """Add {prefix + shape id: shape} to out, groups expanded (child ids: group/child)."""
+    for sh in shapes:
+        if sh.is_placeholder and not placeholders:
+            continue
+        ident = prefix + str(sh.shape_id)
+        out[ident] = sh
+        try:
+            is_group = sh.shape_type == 6
+        except NotImplementedError:
+            is_group = False
+        if is_group:
+            walk_ids(sh.shapes, ident + "/", out)
+    return out
+
+
 def shape_index(prs):
     """{element id: shape} for every shape, groups expanded, ids as in extract.py."""
     out = {}
-
-    def walk(shapes, prefix):
-        for sh in shapes:
-            ident = prefix + str(sh.shape_id)
-            out[ident] = sh
-            try:
-                is_group = sh.shape_type == 6
-            except NotImplementedError:
-                is_group = False
-            if is_group:
-                walk(sh.shapes, ident + "/")
-
     for i, slide in enumerate(prs.slides, 1):
-        walk(slide.shapes, "s%d_" % i)
+        walk_ids(slide.shapes, "s%d_" % i, out)
     return out
 
 
@@ -95,25 +99,11 @@ def _mixed(p):
 def inherited_index(prs):
     """{id: shape} for the non-placeholder shapes of the layouts slides use and of their masters."""
     out = {}
-
-    def walk(shapes, prefix):
-        for sh in shapes:
-            if sh.is_placeholder:
-                continue
-            ident = prefix + str(sh.shape_id)
-            out[ident] = sh
-            try:
-                is_group = sh.shape_type == 6
-            except NotImplementedError:
-                is_group = False
-            if is_group:
-                walk(sh.shapes, ident + "/")
-
     num = lambda part: re.search(r"(\d+)\.xml$", str(part.partname)).group(1)
     for slide in prs.slides:
         lay = slide.slide_layout
-        walk(lay.shapes, "L%s_" % num(lay.part))
-        walk(lay.slide_master.shapes, "M%s_" % num(lay.slide_master.part))
+        walk_ids(lay.shapes, "L%s_" % num(lay.part), out, placeholders=False)
+        walk_ids(lay.slide_master.shapes, "M%s_" % num(lay.slide_master.part), out, placeholders=False)
     return out
 
 

@@ -15,7 +15,7 @@ import re
 from lxml import etree
 from pptx import Presentation
 
-from .units import shape_index
+from .units import shape_index, walk_ids
 
 A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -35,6 +35,10 @@ class Deck:
     def __init__(self, path):
         self.prs = Presentation(path)
         self.idx = shape_index(self.prs)
+        for i, slide in enumerate(self.prs.slides, 1):  # layout and master shapes, under the ids extract.py gives them on each slide
+            lay = slide.slide_layout
+            walk_ids(lay.shapes, "s%d_L" % i, self.idx, placeholders=False)
+            walk_ids(lay.slide_master.shapes, "s%d_M" % i, self.idx, placeholders=False)
 
     def save(self, path):
         self.prs.save(path)

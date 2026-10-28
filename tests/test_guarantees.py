@@ -265,3 +265,10 @@ def test_layout_text_fields_numbers_and_mixed_runs():
     assert "Company motto" in [sh.text_frame.text for sh in U.inherited_index(prs2).values() if sh.has_text_frame]
     p0 = next(sh for sh in prs2.slides[0].shapes if sh.has_text_frame).text_frame._txBody.findall(U.qa("p"))[0]
     assert U._para_text(p0, tokens=True) == "Page {F0}" and p0.find(U.qa("fld")) is not None
+    d = Deck(path)                                             # the fitter edits layout text under its per-slide id
+    alias = next(k for k in d.idx if k.startswith("s1_L"))
+    d.scale_font(alias, 0.5, 18)
+    shrunk = os.path.join(WORK, "inherited_shrunk.pptx")
+    d.save(shrunk)
+    lay = next(sh for sh in U.inherited_index(Presentation(shrunk)).values() if sh.has_text_frame and sh.text_frame.text == "公司口号")
+    assert {r.font.size.pt for p in lay.text_frame.paragraphs for r in p.runs} == {9.0}

@@ -334,9 +334,15 @@ def extract(path):
         inherited = []
         if slide._element.get("showMasterSp") != "0":
             lay = slide.slide_layout
-            walk([x for x in lay.shapes if not x.is_placeholder], "s%d_L" % i, ident, theme, sw * sh, inherited, [])
+            num = lambda part: re.search(r"(\d+)\.xml$", str(part.partname)).group(1)
+            homes = [("s%d_L" % i, "L%s_" % num(lay.part), lay.shapes)]
             if lay._element.get("showMasterSp") != "0":
-                walk([x for x in lay.slide_master.shapes if not x.is_placeholder], "s%d_M" % i, ident, theme, sw * sh, inherited, [])
+                homes.append(("s%d_M" % i, "M%s_" % num(lay.slide_master.part), lay.slide_master.shapes))
+            for prefix, home, shapes_ in homes:  # home: the id units.py gives the same shape (L3_19), shared by every slide
+                k = len(inherited)
+                walk([x for x in shapes_ if not x.is_placeholder], prefix, ident, theme, sw * sh, inherited, [])
+                for rec in inherited[k:]:
+                    rec["home"] = home + rec["id"][len(prefix):]
         for rec in inherited:
             rec["inherited"] = True
             rec["is_title"] = False

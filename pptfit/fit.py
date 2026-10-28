@@ -356,7 +356,7 @@ class Fitter:
 
     def finish(self, report, out_pptx):
         """Deck-level title pass, the final file, and notes for the human who finishes the job."""
-        st = self.title_pass(report["state"], report)
+        st = self.title_pass(self.master_pass(report["state"], report), report)
         report["boxes"] = {}
         for n, r in report["slides"].items():  # boxes of what is still wrong, for the evidence images
             if r["after"]:
@@ -398,6 +398,41 @@ class Fitter:
 
     def run(self, out_pptx, budget_per_slide=180, total_budget=2400):
         return self.finish(self.fit_slides(None, None, budget_per_slide, total_budget), out_pptx)
+
+    def master_pass(self, st, report):
+        """Layout and master text is shared by many slides and never moved slide by slide: where it still
+        breaks, try its shorter wordings, then smaller font steps, judged on all those slides at once."""
+        homes = {}
+        for s, r in report["slides"].items():
+            for x in r["after"]:
+                home = self.els.get(x["id"], {}).get("home")
+                if home and self.units_of.get(home):
+                    homes.setdefault(home, {}).setdefault(s, x["id"])
+        for home, where in homes.items():  # where: {slide: this shape's id on that slide}
+            alias = next(iter(where.values()))
+            units = self.units_of[home]
+            best, best_n = (st, None), sum(len(report["slides"][s]["after"]) for s in where)
+            steps = [("choice", {u["id"]: alt for u in units if alt in self.any_variant[u["id"]]}) for alt in ("short", "short2")]
+            steps += [("scale", f) for f in (0.9, 0.8, 0.7)]
+            for kind, v in steps:  # each step on top of the best so far
+                if kind == "choice" and not v:
+                    continue
+                n = copy.deepcopy(best[0])
+                if kind == "choice":
+                    n["choice"].update(v)
+                else:
+                    n["scale"][alias] = v
+                results = {s: self.evaluate(n, s)[0] for s in where}
+                k = sum(len(x) for x in results.values())
+                if k < best_n:
+                    best, best_n = (n, results), k
+                if best_n == 0:
+                    break
+            if best[1]:
+                st = best[0]
+                for s, v in best[1].items():
+                    report["slides"][s]["after"] = v
+        return st
 
     def title_pass(self, st, report):
         """Titles that shared a size keep sharing it: if any of them still breaks, shrink the whole class."""
