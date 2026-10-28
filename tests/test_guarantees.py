@@ -208,6 +208,16 @@ def test_chart_title_runs_are_one_unit():
     wb = openpyxl.load_workbook(io.BytesIO(ch2.part.chart_workbook.xlsx_part.blob))
     cells = {c.value for ws in wb.worksheets for row in ws.iter_rows() for c in row if isinstance(c.value, str)}
     assert {"January", "February"} <= cells and "一月" not in cells, cells
+    # a chart whose data sheet is linked from outside the file (seen in the corpus) must not stop the deck
+    prs = Presentation(path)
+    part = next(sh for sh in prs.slides[0].shapes if sh.has_chart).chart.part
+    ext = part._element.find("{http://schemas.openxmlformats.org/drawingml/2006/chart}externalData")
+    rid = part.rels.get_or_add_ext_rel(
+        "http://schemas.openxmlformats.org/officeDocument/2006/relationships/oleObject", "file:///C:/data/book.xlsx")
+    ext.set("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id", rid)
+    linked = os.path.join(WORK, "chart_linked.pptx")
+    prs.save(linked)
+    U.apply(linked, [dict(u, full=en.get(u["src"], u["src"])) for u in units], os.path.join(WORK, "chart_linked_en.pptx"))
 
 
 def _para(p, parts):

@@ -230,9 +230,13 @@ def _update_workbook(chart, by_src):
     import io, sys, zipfile
     import openpyxl
     from openpyxl.utils.exceptions import InvalidFileException
-    xlsx = chart.part.chart_workbook.xlsx_part
-    if xlsx is None:
+    ext = chart._chartSpace.find("{%s}externalData" % C)
+    if ext is None:
         return
+    rel = chart.part.rels[ext.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")]
+    if rel.is_external:  # a workbook linked from outside the file: nothing embedded to edit
+        return
+    xlsx = rel.target_part
     try:
         wb = openpyxl.load_workbook(io.BytesIO(xlsx.blob))
     except (zipfile.BadZipFile, InvalidFileException, KeyError, OSError) as e:  # an odd workbook must not stop the deck
