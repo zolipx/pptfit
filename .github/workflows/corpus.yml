@@ -1,9 +1,13 @@
 name: corpus
 # Stress test on public decks (Apache POI test data), pseudo-translated. Decks are fetched at run time.
 on:
+  push:
+    paths: [".github/workflows/corpus.yml", "bench/**", "pptfit/**"]
   workflow_dispatch:
     inputs:
-      chunks: {description: parallel jobs, default: "12"}
+      chunks:
+        description: parallel jobs
+        default: "12"
 jobs:
   list:
     runs-on: ubuntu-latest
@@ -12,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
       - id: m
         env: {GH_TOKEN: "${{ github.token }}"}
-        run: python bench/corpus_list.py "${{ inputs.chunks }}" >> "$GITHUB_OUTPUT"
+        run: python bench/corpus_list.py "${{ inputs.chunks || '12' }}" >> "$GITHUB_OUTPUT"
   fit:
     needs: list
     runs-on: ubuntu-latest
