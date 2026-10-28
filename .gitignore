@@ -1,0 +1,14 @@
+# Never publish decks or anything derived from them (privacy)
+*.pptx
+*.ppt
+*.pdf
+*.png
+*.zip
+*.b64
+*.txt
+out/
+runs/
+work/
+bench/fixture_*.py
+__pycache__/
+!requirements-ci.txt

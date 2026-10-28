@@ -1,0 +1,43 @@
+name: corpus
+# Stress test on public decks (Apache POI test data), pseudo-translated. Decks are fetched at run time.
+on:
+  workflow_dispatch:
+    inputs:
+      chunks: {description: parallel jobs, default: "12"}
+jobs:
+  list:
+    runs-on: ubuntu-latest
+    outputs: {matrix: "${{ steps.m.outputs.matrix }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        env: {GH_TOKEN: "${{ github.token }}"}
+        run: python bench/corpus_list.py "${{ inputs.chunks }}" >> "$GITHUB_OUTPUT"
+  fit:
+    needs: list
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: {chunk: "${{ fromJson(needs.list.outputs.matrix) }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - name: fetch decks
+        run: |
+          mkdir -p /tmp/decks
+          echo '${{ toJson(matrix.chunk) }}' | python -c "import json,sys,urllib.request,os; [urllib.request.urlretrieve(u, '/tmp/decks/'+os.path.basename(u)) for u in json.load(sys.stdin)]"
+      - run: python bench/run_corpus.py /tmp/res /tmp/decks/*.pptx
+      - uses: actions/upload-artifact@v4
+        with: {name: "res-${{ strategy.job-index }}", path: /tmp/res}
+  summary:
+    needs: fit
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {path: /tmp/all, pattern: "res-*"}
+      - run: python bench/summarize.py /tmp/all | tee summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with: {name: corpus-summary, path: summary.md}

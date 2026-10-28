@@ -1,0 +1,19 @@
+name: ci
+on: [push, workflow_dispatch]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: python -m pytest -q tests
+      - name: synthetic benchmark
+        run: |
+          python bench/synth.py /tmp/synth
+          python -m pptfit fit /tmp/synth/synth.pptx /tmp/synth/synth_tr.json /tmp/synth/synth_gl.json /tmp/out_synth | tail -20 | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synth
+          path: |
+            /tmp/out_synth/cmp
+            /tmp/out_synth/summary.md

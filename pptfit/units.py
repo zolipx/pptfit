@@ -1,0 +1,189 @@
+"""Translation units: split any deck into pieces a translator fills, and write them back.
+
+A unit is one paragraph of a shape or table cell, one distinct string of a chart
+or SmartArt, or one paragraph of the speaker notes. Ids are derived from the
+file, so the same code works on any deck:
+
+    s4_12#p0          paragraph 0 of shape 12 on slide 4 (groups: s4_7/12#p0)
+    s5_3/r1c2#p0      table cell row 1, col 2
+    s9_8#c3           chart string 3 (matched by its source text)
+    s2_5#d0           SmartArt string 0 (matched by its source text)
+    s4#notes#p1       notes paragraph 1
+
+Translations file: [{id, src, full, short, concepts:[{zh,en}], back}], written by
+the model. `apply()` writes the chosen variant ("full" or "short") per unit.
+"""
+import copy, re
+
+from lxml import etree
+from pptx import Presentation
+
+A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+C = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+DGM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
+R_DM = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}dm"
+qa = lambda t: "{%s}%s" % (A, t)
+
+
+def shape_index(prs):
+    """{element id: shape} for every shape, groups expanded, ids as in extract.py."""
+    out = {}
+
+    def walk(shapes, prefix):
+        for sh in shapes:
+            ident = prefix + str(sh.shape_id)
+            out[ident] = sh
+            try:
+                is_group = sh.shape_type == 6
+            except NotImplementedError:
+                is_group = False
+            if is_group:
+                walk(sh.shapes, ident + "/")
+
+    for i, slide in enumerate(prs.slides, 1):
+        walk(slide.shapes, "s%d_" % i)
+    return out
+
+
+def _para_text(p):
+    parts = []
+    for node in p:
+        tag = node.tag.split("}")[-1]
+        if tag in ("r", "fld"):
+            t = node.find(qa("t"))
+            parts.append(t.text or "" if t is not None else "")
+        elif tag == "br":
+            parts.append("\n")
+    return "".join(parts)
+
+
+def _diagram_parts(prs):
+    return [p for p in prs.part.package.iter_parts() if str(p.partname).startswith("/ppt/diagrams/")]
+
+
+def make_units(pptx_path):
+    prs = Presentation(pptx_path)
+    units = []
+
+    def add_txbody(eid, tx):
+        if tx is None:
+            return
+        for k, p in enumerate(tx.findall(qa("p"))):
+            text = _para_text(p)
+            if text.strip():
+                units.append({"id": "%s#p%d" % (eid, k), "src": text})
+
+    for eid, sh in shape_index(prs).items():
+        el = sh._element
+        tx = el.find("{http://schemas.openxmlformats.org/presentationml/2006/main}txBody")
+        add_txbody(eid, tx)
+        if getattr(sh, "has_table", False) and sh.has_table:
+            for r, row in enumerate(sh.table.rows):
+                for c, cell in enumerate(row.cells):
+                    add_txbody("%s/r%dc%d" % (eid, r, c), cell._tc.find(qa("txBody")))
+        if getattr(sh, "has_chart", False) and sh.has_chart:
+            seen = []
+            for node in _chart_text_nodes(sh.chart._chartSpace):
+                if node.text and node.text.strip() and node.text not in seen and not re.fullmatch(r"[-\d.,%\s]+", node.text):
+                    seen.append(node.text)
+            units += [{"id": "%s#c%d" % (eid, k), "src": t} for k, t in enumerate(seen)]
+        rel = el.find(".//{%s}relIds" % DGM)
+        if rel is not None:  # SmartArt: texts live in the diagram data part
+            data = sh.part.related_part(rel.get(R_DM))
+            seen = []
+            for t in etree.fromstring(data.blob).iter(qa("t")):
+                if t.text and t.text.strip() and t.text not in seen:
+                    seen.append(t.text)
+            units += [{"id": "%s#d%d" % (eid, k), "src": t} for k, t in enumerate(seen)]
+    for i, slide in enumerate(prs.slides, 1):
+        if slide.has_notes_slide:
+            add_txbody("s%d#notes" % i, slide.notes_slide.notes_text_frame._txBody)
+    return units
+
+
+def _chart_text_nodes(root):
+    for t in root.iter(qa("t")):
+        yield t
+    for v in root.iter("{%s}v" % C):
+        anc = [a.tag.split("}")[-1] for a in v.iterancestors()]
+        if any(a.startswith("num") for a in anc[:3]):
+            continue
+        yield v
+
+
+def set_paragraph_text(p, text):
+    """Replace a paragraph's text, keeping the first run's formatting; '\n' becomes a line break."""
+    runs = [n for n in p if n.tag.split("}")[-1] in ("r", "fld")]
+    rpr = None
+    if runs and runs[0].find(qa("rPr")) is not None:
+        rpr = copy.deepcopy(runs[0].find(qa("rPr")))
+    elif p.find(qa("endParaRPr")) is not None:
+        rpr = copy.deepcopy(p.find(qa("endParaRPr")))
+        rpr.tag = qa("rPr")
+    for n in list(p):
+        if n.tag.split("}")[-1] in ("r", "fld", "br"):
+            p.remove(n)
+    end = p.find(qa("endParaRPr"))
+    pieces = text.split("\n")
+    nodes = []
+    for i, piece in enumerate(pieces):
+        if i:
+            br = etree.Element(qa("br"))
+            if rpr is not None:
+                br.append(copy.deepcopy(rpr))
+            nodes.append(br)
+        r = etree.Element(qa("r"))
+        if rpr is not None:
+            r.append(copy.deepcopy(rpr))
+        t = etree.SubElement(r, qa("t"))
+        t.text = piece
+        nodes.append(r)
+    for n in nodes:
+        if end is not None:
+            end.addprevious(n)
+        else:
+            p.append(n)
+
+
+def apply(pptx_in, translations, pptx_out, choice=None, default="full"):
+    """Write translations into a copy. choice: {unit id: "full"|"short"|...}."""
+    choice = choice or {}
+    prs = Presentation(pptx_in)
+    idx = shape_index(prs)
+    chosen = {}
+    for u in translations:
+        v = choice.get(u["id"], default)
+        chosen[u["id"]] = u.get(v) or u.get("full") or u["src"]
+    by_src = {}  # chart / SmartArt strings are matched by their source text
+    for u in translations:
+        uid = u["id"]
+        if "#c" in uid or "#d" in uid:
+            by_src[u["src"]] = chosen[uid]
+            continue
+        eid, para = uid.rsplit("#p", 1)
+        if "#notes" in eid:
+            slide = prs.slides[int(eid.split("#")[0][1:]) - 1]
+            tx = slide.notes_slide.notes_text_frame._txBody
+        else:
+            m = re.match(r"(.*)/r(\d+)c(\d+)$", eid)
+            if m:
+                tx = idx[m.group(1)].table.cell(int(m.group(2)), int(m.group(3)))._tc.find(qa("txBody"))
+            else:
+                tx = idx[eid]._element.find("{http://schemas.openxmlformats.org/presentationml/2006/main}txBody")
+        set_paragraph_text(tx.findall(qa("p"))[int(para)], chosen[uid])
+    if by_src:
+        for sh in idx.values():
+            if getattr(sh, "has_chart", False) and sh.has_chart:
+                for node in _chart_text_nodes(sh.chart._chartSpace):
+                    if node.text in by_src:
+                        node.text = by_src[node.text]
+        for part in _diagram_parts(prs):
+            root = etree.fromstring(part.blob)
+            hit = False
+            for t in root.iter(qa("t")):
+                if t.text in by_src:
+                    t.text, hit = by_src[t.text], True
+            if hit:
+                part._blob = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
+    prs.save(pptx_out)
+    return chosen

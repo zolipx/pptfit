@@ -1,0 +1,14 @@
+name: setup
+description: LibreOffice, fonts and Python packages for pptfit
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with: {python-version: "3.12", cache: pip, cache-dependency-path: requirements-ci.txt}
+    - shell: bash
+      run: |
+        sudo apt-get update -qq
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+          libreoffice-impress fonts-liberation fonts-crosextra-carlito fonts-noto-cjk >/dev/null
+        pip install -q -r requirements-ci.txt
+        soffice --version

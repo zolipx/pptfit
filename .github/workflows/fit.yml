@@ -1,0 +1,60 @@
+name: fit
+# One private deck, fitted slide-parallel. Inputs are temporary download links; nothing is committed.
+on:
+  workflow_dispatch:
+    inputs:
+      deck_url: {required: true}
+      translations_url: {required: true}
+      glossary_url: {required: false, default: ""}
+      parts: {description: parallel jobs, default: "6"}
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs: {matrix: "${{ steps.m.outputs.matrix }}"}
+    steps:
+      - id: m
+        run: |
+          pip install -q python-pptx
+          curl -sSL "${{ inputs.deck_url }}" -o deck.pptx
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import json; from pptx import Presentation
+          n = len(Presentation("deck.pptx").slides); k = max(1, min(int("${{ inputs.parts }}"), n))
+          print("matrix=" + json.dumps([",".join(str(s) for s in range(i + 1, n + 1, k)) for i in range(k)]))
+          PY
+  part:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: {slides: "${{ fromJson(needs.plan.outputs.matrix) }}"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - run: |
+          curl -sSL "${{ inputs.deck_url }}" -o deck.pptx
+          curl -sSL "${{ inputs.translations_url }}" -o tr.json
+          if [ -n "${{ inputs.glossary_url }}" ]; then curl -sSL "${{ inputs.glossary_url }}" -o gl.json; else echo "[]" > gl.json; fi
+          python -m pptfit fit-part deck.pptx tr.json gl.json "${{ matrix.slides }}" part.json
+      - uses: actions/upload-artifact@v4
+        with: {name: "part-${{ strategy.job-index }}", path: part.json}
+  merge:
+    needs: part
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: actions/download-artifact@v4
+        with: {path: parts, pattern: "part-*"}
+      - run: |
+          curl -sSL "${{ inputs.deck_url }}" -o deck.pptx
+          curl -sSL "${{ inputs.translations_url }}" -o tr.json
+          if [ -n "${{ inputs.glossary_url }}" ]; then curl -sSL "${{ inputs.glossary_url }}" -o gl.json; else echo "[]" > gl.json; fi
+          python -m pptfit merge deck.pptx tr.json gl.json out parts/*/part.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: result
+          path: |
+            out/final.pptx
+            out/cmp
+            out/summary.md
+            out/report.json
