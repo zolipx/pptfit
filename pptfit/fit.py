@@ -225,7 +225,8 @@ class Fitter:
                 o = [x["bbox"] for x in cand.values() if x["id"] not in target and L.is_visible(x)
                      and not (skip_lines and self._trimmable(x))
                      and not any(L.excess(boxes[e], x["bbox"]) <= 1 for e in boxes)]
-                return o + [b for k, b in info["inks"].items() if k not in target]
+                return (o + [b for k, b in info["inks"].items() if k not in target]
+                        + [b for k, b in con["ink"].items() if k not in target])  # never into where another text sat in the original
             e0 = self.els[next(iter(boxes))]
             ax = {"center": "center", "right": "right"}.get((e0.get("paragraphs") or [{}])[0].get("align"), "left")
             ay = "center" if e0.get("anchor") == "center" else "top"
