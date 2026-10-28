@@ -32,6 +32,8 @@ for deck in sys.argv[2:]:
         f = Fitter(deck, tr, [], workdir=os.path.join(tempfile.gettempdir(), "pptfit_work", name), log=lambda m: None)
         slides = [s["index"] for s in f.orig["slides"]][:MAX_SLIDES]
         rep = f.finish(f.fit_slides(slides, None, PER_SLIDE, PER_DECK), os.path.join(tempfile.gettempdir(), "pptfit_work", name + "_final.pptx"))
+        from pptfit import report  # side-by-side images of every fitted slide, so the numbers can be checked by eye
+        report.make(deck, os.path.join(tempfile.gettempdir(), "pptfit_work", name + "_final.pptx"), rep, os.path.join(out, name), f.sw, f.sh, dpi=60)
         scales = list(rep["state"]["scale"].values())
         rec.update({
             "slides": len(slides), "units": len(tr),
