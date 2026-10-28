@@ -10,15 +10,23 @@
         fit only these slides (for running parts in parallel)
     python -m pptfit merge deck.pptx translations.json glossary.json outdir part1.json part2.json ...
         combine parts and write the same outputs as `fit`
+    python -m pptfit note final.pptx 4 "label 'Qty check' is abbreviated"
+        add a line for the reviewer to slide 4's notes (things a person fixes in seconds)
 """
 import json, os, sys
 
 
 def main(argv):
-    if len(argv) < 2 or argv[0] not in ("units", "check-text", "fit", "fit-part", "merge"):
+    if len(argv) < 2 or argv[0] not in ("units", "check-text", "fit", "fit-part", "merge", "note"):
         print(__doc__)
         return 2
     cmd, args = argv[0], argv[1:]
+    if cmd == "note":
+        from .ops import Deck
+        d = Deck(args[0])
+        d.add_note(int(args[1]), ["[agent] " + " ".join(args[2:])])
+        d.save(args[0])
+        return 0
     if cmd == "units":
         from .units import make_units
         json.dump(make_units(args[0]), sys.stdout, ensure_ascii=False, indent=1)

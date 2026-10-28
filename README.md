@@ -38,11 +38,15 @@ In restricted sandboxes, if apt fails with a setgroups error, add
 4. `python -m pptfit fit deck.pptx translations.json glossary.json out/` produces
    `out/final.pptx`, `out/cmp/s{N}.png` (original | result, anything still wrong is
    outlined in red), `out/summary.md` and `out/report.json`.
-5. Look at every `cmp` image. Layout comes first: slides that the accurate moves cannot
-   fix get a lossy pass (shorter wordings, fonts down to 70%), and every compromise is
-   written into that slide's notes as "[pptfit] Please check this slide". For slides
-   still listed under "needs human", add a tighter `short2` for the units involved or
-   extend the code (see below) and run step 4 again.
+5. Look at every `cmp` image yourself; the checks can miss things. Judge by what a person
+   would have to repair: layout (shapes, groups, flow charts, callouts, alignment, text off
+   pictures, lines and bars) is slow to repair and must be right; wording, punctuation or a
+   label to retype takes seconds. Slides the accurate moves cannot fix get a lossy pass
+   (shorter wordings, fonts down to 70%), and every compromise is written into that slide's
+   notes as "[pptfit] Please check this slide". For layout problems still visible, add a
+   tighter `short2` for the units involved or extend the code (see below) and run step 4
+   again. For the quick kind, add a line to the slide notes:
+   `python -m pptfit note out/final.pptx N "what to check"`.
 
 ## How it works
 
@@ -62,7 +66,7 @@ In restricted sandboxes, if apt fails with a setgroups error, add
 | code | meaning |
 |---|---|
 | INK_OUT | text left the visible box, panel or picture that held it |
-| INK_HIT | text touched a picture, line, bar or other text it did not touch before |
+| INK_HIT | text touched a picture, line, bar or other text it did not touch before (word by word; a line counts with its stroke) |
 | INK_BG | text left the background area it sat on (bars and panels drawn into the master or background image) |
 | BOX_HIT | a visible box now overlaps one it did not overlap |
 | OFF_SLIDE | text outside the slide |
