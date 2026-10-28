@@ -220,6 +220,26 @@ def test_chart_title_runs_are_one_unit():
     U.apply(linked, [dict(u, full=en.get(u["src"], u["src"])) for u in units], os.path.join(WORK, "chart_linked_en.pptx"))
 
 
+def test_faint_fill_is_no_obstacle():
+    from pptx import Presentation
+    from pptx.dml.color import RGBColor
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.util import Pt
+    from lxml import etree
+    prs = Presentation()
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    for name, alpha in (("band", "10000"), ("panel", "80000")):   # a 10% tint band behind a title vs a real panel
+        sh = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Pt(100), Pt(0), Pt(36), Pt(540))
+        sh.name = name
+        sh.fill.solid()
+        sh.fill.fore_color.rgb = RGBColor(0xEE, 0xEE, 0xEE)
+        etree.SubElement(sh.fill._xPr.find(U.qa("solidFill"))[0], U.qa("alpha"), val=alpha)
+    path = os.path.join(WORK, "faint.pptx")
+    prs.save(path)
+    vis = {e["name"]: e.get("visible_fill") for e in X.extract(path)["slides"][0]["shapes"] if e.get("name") in ("band", "panel")}
+    assert vis == {"band": False, "panel": True}, vis
+
+
 def _para(p, parts):
     """Fill an <a:p> with runs and fields: parts like ["第", ("fld", "1"), "页"] or [("b", "3倍")]."""
     from lxml import etree

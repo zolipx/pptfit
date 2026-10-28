@@ -55,6 +55,15 @@ def prst_of(el):
         return "custGeom"
     return None
 
+FAINT = 20000  # alpha (1/1000 %) at or below which a fill or line is a tint, not an obstacle: decorative bands behind text
+
+
+def faint(node):
+    """True if every colour in node is drawn at <= 20% opacity."""
+    alphas = [int(a.get("val", "100000")) for a in node.iter(qa("alpha"))]
+    return bool(alphas) and max(alphas) <= FAINT
+
+
 def fill_line(el):
     sp = sppr(el)
     fill = line = None
@@ -64,13 +73,13 @@ def fill_line(el):
             for tag, key in (("solidFill", None), ("gradFill", "grad"), ("blipFill", "blip"), ("pattFill", "patt")):
                 n = sp.find(qa(tag))
                 if n is not None:
-                    vis_f = True
+                    vis_f = not faint(n)
                     fill = key or color_of(n)
                     break
         ln = sp.find(qa("ln"))
         if ln is not None and ln.find(qa("noFill")) is None:
             sf = ln.find(qa("solidFill"))
-            if sf is not None or (ln.get("w") and int(ln.get("w") or 0) > 0):
+            if (sf is not None and not faint(sf)) or (sf is None and ln.get("w") and int(ln.get("w") or 0) > 0):
                 vis_l = True
                 line = color_of(sf) if sf is not None else "default"
     style = el.find(qp("style"))
