@@ -52,6 +52,11 @@ class Deck:
 
     def geometry(self, eid):
         x, _ = self._xfrm(eid)
+        if x is None or x.find(qa("off")) is None:  # placeholder inheriting its geometry from the layout
+            sh = self.idx[eid]
+            left, top, width, height = sh.left, sh.top, sh.width, sh.height
+            sh.left, sh.top, sh.width, sh.height = left, top, width, height  # writes an explicit xfrm
+            x, _ = self._xfrm(eid)
         off, ext = x.find(qa("off")), x.find(qa("ext"))
         return [int(off.get("x")), int(off.get("y")), int(ext.get("cx")), int(ext.get("cy"))]
 

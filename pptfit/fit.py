@@ -18,6 +18,11 @@ Moves (extension point: add one in `moves()`):
     shift   move the box into free space (expensive: the design moves)
     trim    shorten a line that the text runs into
     narrow  pull a box that sticks out of the slide back inside
+
+Layout comes first. Slides still broken after the accurate moves get a second, lossy
+pass: `short`/`short2` wordings that lost a detail and fonts down to 70% become
+allowed. Every such compromise is written into the slide notes for a human to
+check, because fixing a word is easy and fixing a layout is not.
 """
 import copy, itertools, os, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
@@ -26,6 +31,7 @@ from . import extract as X, layout as L, render as R, textcheck as T, units as U
 from .ops import Deck
 
 STEPS = [1.0, 0.95, 0.9, 0.85, 0.8]
+LOSSY_FLOOR = 0.7  # second phase only, and always reported
 GAP = 3.0          # pt kept free around a grown box
 WORKERS = max(1, min(4, os.cpu_count() or 1))
 
@@ -67,6 +73,8 @@ class Fitter:
         for u in translations:
             self.units_of.setdefault(u["id"].split("#")[0].split("/r")[0], []).append(u)
         self.allowed = {u["id"]: T.allowed_variants(u, glossary) or ["full"] for u in translations}
+        self.any_variant = {u["id"]: [k for k in ("full", "short", "short2") if u.get(k)] for u in translations}
+        self.lossy = False  # second phase: layout first, wording may lose detail, font may go to 70%
         probe = Deck(src_pptx)
         self.spaced = {e: probe.has_spacing(e) for e in probe.idx}  # elements with explicit line/paragraph spacing
         self.counter = itertools.count()
@@ -114,7 +122,8 @@ class Fitter:
         cand = X.extract(path)["slides"][slide - 1]["shapes"]
         os.remove(path)
         frozen = set(st["trim"]) | set(st["grow"]) | set(st["shift"])
-        v, info = L.check(self.cons[slide], cand, words, self.expected(st), frozen)
+        floors = (LOSSY_FLOOR, LOSSY_FLOOR) if self.lossy else (L.FLOOR_BODY, L.FLOOR_TITLE)
+        v, info = L.check(self.cons[slide], cand, words, self.expected(st), frozen, floors)
         return v, info, {e["id"]: e for e in cand}
 
     # ---------- moves ----------
@@ -166,8 +175,9 @@ class Fitter:
         is_title = any(e in self.titles for e in target)
         out = []
         units = [u for e in target for u in self.units_of.get(e, [])]
+        variants = self.any_variant if self.lossy else self.allowed
         for alt in ("short", "short2"):
-            sw = {u["id"]: alt for u in units if alt in self.allowed[u["id"]] and st["choice"].get(u["id"], "full") != alt}
+            sw = {u["id"]: alt for u in units if alt in variants[u["id"]] and st["choice"].get(u["id"], "full") != alt}
             if sw:
                 n = copy.deepcopy(st); n["choice"].update(sw); out.append(("short", n)); break
         if any(e not in st["insets"] for e in target):
@@ -179,9 +189,10 @@ class Fitter:
                 for e in target:
                     n.setdefault("spacing", {})[e] = f
                 out.append(("spacing", n))
-        if not is_title:
+        if not is_title or self.lossy:
             cur = min(st["scale"].get(e, 1.0) for e in target)
-            for f in (f for f in STEPS if f < cur - 1e-6):  # every remaining step: one step may look worse than two
+            steps = STEPS + [0.75, 0.7] if self.lossy else STEPS
+            for f in (f for f in steps if f < cur - 1e-6 and (f >= 0.9 or not is_title)):  # every remaining step: one step may look worse than two; titles stay >= 90% so they keep matching each other
                 n = copy.deepcopy(st)
                 for e in target:
                     n["scale"][e] = f
@@ -250,9 +261,11 @@ class Fitter:
         return out
 
     # ---------- search ----------
-    def score(self, viol, st):
-        """Fewer violations first, then less total overshoot (partial progress counts), then lower cost."""
-        return (len(viol), round(sum(x.get("amount", 1) for x in viol), 1), cost(st, self.titles))
+    def score(self, viol, st, info=None):
+        """Fewer violations first, then less total overshoot (partial progress counts), then lower
+        cost; a lonely short word on the last line of a paragraph costs a little extra."""
+        widows = (info or {}).get("widows", 0)
+        return (len(viol), round(sum(x.get("amount", 1) for x in viol), 1), cost(st, self.titles) + 0.3 * widows)
 
     def fit_slide(self, st, slide, budget=300, max_iter=15):
         t0 = time.time()
@@ -264,7 +277,12 @@ class Fitter:
                 break
             weight = {}
             for x in viol:
-                t = self.target_of(x["id"], slide)
+                eid = x["id"]
+                if self.els.get(eid, {}).get("inherited"):  # master/layout shapes are read-only: act on the other party
+                    eid = x.get("other")
+                    if not eid or self.els.get(eid, {}).get("inherited") or eid not in self.els:
+                        continue
+                t = self.target_of(eid, slide)
                 weight[t] = weight.get(t, 0) + 1 + x.get("amount", 0) / 100
             improved = False
             for t in sorted(weight, key=weight.get, reverse=True):
@@ -272,8 +290,8 @@ class Fitter:
                 if not cands or time.time() - t0 > budget:
                     continue
                 results = list(pool.map(lambda c: (c[0], c[1], self.evaluate(c[1], slide)), cands))
-                name, n, (v2, i2, c2) = min(results, key=lambda r: self.score(r[2][0], r[1]))
-                if self.score(v2, n) < self.score(viol, st):
+                name, n, (v2, i2, c2) = min(results, key=lambda r: self.score(r[2][0], r[1], r[2][1]))
+                if self.score(v2, n, i2) < self.score(viol, st, info):
                     st, viol, info, cand = n, v2, i2, c2
                     history.append({"step": name, "target": list(t), "violations": len(viol), "cost": cost(st, self.titles)})
                     self.log("  s%d %s %s -> %d violations" % (slide, name, ",".join(t), len(viol)))
@@ -299,7 +317,14 @@ class Fitter:
             if left <= 0:
                 report["slides"][n] = {"before": len(v0), "after": v0, "history": [], "skipped": True}
                 continue
+            t1 = time.time()
             st, v, hist = self.fit_slide(st, n, min(budget_per_slide, left))
+            if v:  # layout first: let wording lose detail and fonts go to 70%, but say so in the notes
+                self.lossy = True
+                st2, v2, hist2 = self.fit_slide(st, n, max(budget_per_slide - (time.time() - t1), 30))
+                self.lossy = False
+                if (len(v2), sum(x.get("amount", 1) for x in v2)) < (len(v), sum(x.get("amount", 1) for x in v)):
+                    st, v, hist = st2, v2, hist + [dict(h, step="lossy " + h["step"]) for h in hist2[1:]]
             report["slides"][n] = {"before": len(v0), "after": v, "history": hist}
             self.log("slide %d: %d -> %d" % (n, len(v0), len(v)))
         report["state"] = st
@@ -332,6 +357,16 @@ class Fitter:
                 report["boxes"][str(n)] = {x["id"]: info["inks"].get(x["id"]) or cand.get(x["id"], {}).get("bbox") for x in r["after"]}
         self.build(st, out_pptx)
         notes = {n: [advice(x, self.els) for x in r["after"]] for n, r in report["slides"].items() if r["after"]}
+        for u in self.tr:  # wording that lost detail to save the layout: easy for a human to touch up
+            v = st["choice"].get(u["id"], "full")
+            if T.check_unit(u, u.get(v) or "", self.gl):
+                slide = int(u["id"].split("_")[0].lstrip("s").split("#")[0])
+                notes.setdefault(slide, []).append("wording shortened to fit, check the meaning: '%s' -> '%s'"
+                                                   % (u["src"][:40], (u.get(v) or "")[:60]))
+        for eid, f in st["scale"].items():
+            if f < L.FLOOR_BODY - 1e-6 and eid in self.els:
+                slide = int(eid.split("_")[0].lstrip("s"))
+                notes.setdefault(slide, []).append("font reduced to %d%% to fit: '%s'" % (round(f * 100), (self.els[eid].get("text") or "")[:30].replace("\n", " ")))
         if notes:
             d = Deck(out_pptx)
             for n, lines in notes.items():
@@ -340,7 +375,8 @@ class Fitter:
         report["state"] = st
         report["advice"] = notes
         report["text_violations"] = T.check_all(self.tr, st["choice"], self.gl)
-        report["needs_human"] = sorted(notes)
+        report["needs_human"] = sorted(n for n, r in report["slides"].items() if r["after"])
+        report["review"] = sorted(notes)
         return report
 
     def run(self, out_pptx, budget_per_slide=180, total_budget=2400):
@@ -349,7 +385,8 @@ class Fitter:
     def title_pass(self, st, report):
         """Titles that shared a size keep sharing it: if any of them still breaks, shrink the whole class."""
         for members in L.title_sizes(self.cons):
-            if not any(any(x["id"] == t for x in report["slides"][s]["after"]) for s, t in members):
+            members = [(s, t) for s, t in members if s in report["slides"]]  # only slides that were fitted
+            if len(members) < 2 or not any(any(x["id"] == t for x in report["slides"][s]["after"]) for s, t in members):
                 continue
             for f in (0.95, 0.9):
                 n = copy.deepcopy(st)

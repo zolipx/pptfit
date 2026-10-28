@@ -195,7 +195,20 @@ def constraints(slide_els, words, slide_w, slide_h):
 
 
 # ---------- 3. check ----------
-def check(con, cand_els, words, expected_text=None, frozen_ids=()):
+def widows(owned):
+    """Multi-line texts whose last line is a single short word (looks broken; soft cost only)."""
+    n = 0
+    for ws in owned.values():
+        if line_count(ws) < 2:
+            continue
+        last_y = max(w["box"][1] for w in ws)
+        last = [w for w in ws if w["box"][1] > last_y - 0.5 * w["box"][3]]
+        if len(last) == 1 and len(last[0]["text"]) <= 6:
+            n += 1
+    return n
+
+
+def check(con, cand_els, words, expected_text=None, frozen_ids=(), floors=(FLOOR_BODY, FLOOR_TITLE)):
     """Violations of one candidate slide: [{code, id, other, amount}].
 
     expected_text: {element id: text it should show} for the broken-word check.
@@ -204,6 +217,7 @@ def check(con, cand_els, words, expected_text=None, frozen_ids=()):
     owned = assign(words, cand_els)
     inks = ink_boxes(owned)
     box = {e["id"]: e["bbox"] for e in cand_els}
+    by_kind = {e["id"]: e["kind"] for e in cand_els}
     v = []
     for eid, ink in inks.items():
         cid = con["container"].get(eid)
@@ -216,14 +230,15 @@ def check(con, cand_els, words, expected_text=None, frozen_ids=()):
                 v.append({"code": "INK_HIT", "id": eid, "other": oid, "amount": round(inter(ink, ob) ** 0.5, 1)})
         if excess(ink, con["slide"]) > TOL:
             v.append({"code": "OFF_SLIDE", "id": eid, "amount": round(excess(ink, con["slide"]), 1)})
-        if con.get("lines", {}).get(eid) == 1 and not con["container"].get(eid) and line_count(owned[eid]) > 1:
+        own_layout = by_kind.get(eid) in ("chart", "smartart")  # these lay out their own labels; fix wording, not geometry
+        if not own_layout and con.get("lines", {}).get(eid) == 1 and not con["container"].get(eid) and line_count(owned[eid]) > 1:
             v.append({"code": "LINES", "id": eid, "amount": float(line_count(owned[eid]) - 1)})  # free-standing one-liners stay one line
         osz, csz = con["size"].get(eid), rendered_size(owned[eid])
         if osz and csz:
-            floor = osz * (FLOOR_TITLE if eid in con["titles"] else FLOOR_BODY)
+            floor = osz * (floors[1] if eid in con["titles"] else floors[0])
             if csz < floor - 0.1:
                 v.append({"code": "FONT_FLOOR", "id": eid, "amount": round(floor - csz, 1)})
-        if expected_text and eid in expected_text:
+        if expected_text and eid in expected_text and not own_layout:
             want = set(tokens(expected_text[eid]))
             for w in owned[eid]:
                 t = (tokens(w["text"]) or [""])[0]
@@ -248,7 +263,7 @@ def check(con, cand_els, words, expected_text=None, frozen_ids=()):
                 v.append({"code": "MOVED", "id": e["id"], "amount": 1})
     if con.get("bg"):
         v += check_bg(con["bg"], owned, con["bg_scale"])
-    return v, {"inks": inks, "sizes": sizes}
+    return v, {"inks": inks, "sizes": sizes, "widows": widows(owned)}
 
 
 def title_sizes(cons):

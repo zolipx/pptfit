@@ -3,7 +3,7 @@
 python bench/run_corpus.py outdir deck1.pptx deck2.pptx ...   ->  outdir/<name>.json per deck
 A crash is a result too: it is recorded with its traceback instead of stopping the run.
 """
-import json, os, sys, time, traceback
+import json, os, sys, tempfile, time, traceback
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.dirname(__file__))
@@ -20,10 +20,18 @@ for deck in sys.argv[2:]:
     name = os.path.splitext(os.path.basename(deck))[0]
     rec, t0 = {"deck": os.path.basename(deck)}, time.time()
     try:
+        from pptx import Presentation
+        Presentation(deck)
+    except Exception as e:  # noqa: BLE001  corrupt or not a pptx: the input is invalid, not the tool
+        rec.update({"invalid": repr(e)[:200], "seconds": round(time.time() - t0)})
+        json.dump(rec, open(os.path.join(out, name + ".json"), "w"), indent=1)
+        print(json.dumps(rec), flush=True)
+        continue
+    try:
         tr = pseudo.translations(deck)
-        f = Fitter(deck, tr, [], workdir=os.path.join("/tmp/work", name), log=lambda m: None)
+        f = Fitter(deck, tr, [], workdir=os.path.join(tempfile.gettempdir(), "pptfit_work", name), log=lambda m: None)
         slides = [s["index"] for s in f.orig["slides"]][:MAX_SLIDES]
-        rep = f.finish(f.fit_slides(slides, None, PER_SLIDE, PER_DECK), os.path.join("/tmp/work", name + "_final.pptx"))
+        rep = f.finish(f.fit_slides(slides, None, PER_SLIDE, PER_DECK), os.path.join(tempfile.gettempdir(), "pptfit_work", name + "_final.pptx"))
         scales = list(rep["state"]["scale"].values())
         rec.update({
             "slides": len(slides), "units": len(tr),

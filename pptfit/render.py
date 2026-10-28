@@ -13,7 +13,7 @@ import hashlib, os, shutil, subprocess, tempfile
 import pymupdf as fitz
 from pptx import Presentation
 
-CACHE = os.environ.get("PPTFIT_CACHE", "/tmp/pptfit_cache")
+CACHE = os.environ.get("PPTFIT_CACHE") or os.path.join(tempfile.gettempdir(), "pptfit_cache")
 R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
 
 
@@ -34,6 +34,7 @@ def to_pdf(pptx_path, timeout=240):
     work = tempfile.mkdtemp(prefix="lo_")
     src = os.path.join(work, "in.pptx")
     shutil.copy(pptx_path, src)
+    _unhide(src)  # LibreOffice skips hidden slides, which would shift every page after them
     profile = "file://" + os.path.join(work, "profile")  # private profile: parallel-safe
     subprocess.run(["soffice", "-env:UserInstallation=" + profile, "--headless",
                     "--convert-to", "pdf", "--outdir", work, src],
@@ -41,6 +42,20 @@ def to_pdf(pptx_path, timeout=240):
     shutil.move(os.path.join(work, "in.pdf"), out)
     shutil.rmtree(work, ignore_errors=True)
     return out
+
+
+def _unhide(path):
+    """Clear show="0" on every slide of a render copy (the user's file keeps its hidden slides)."""
+    import re, zipfile
+    with zipfile.ZipFile(path) as z:
+        items = [(i, z.read(i.filename)) for i in z.infolist()]
+    if not any(re.search(rb'<p:sld\b[^>]*\sshow="(0|false)"', d[:2000]) for i, d in items if i.filename.startswith("ppt/slides/slide")):
+        return
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        for i, d in items:
+            if i.filename.startswith("ppt/slides/slide") and i.filename.endswith(".xml"):
+                d = re.sub(rb'(<p:sld\b[^>]*?)\sshow="(0|false)"', rb"\1", d, count=1)
+            z.writestr(i, d)
 
 
 def single_slide(pptx_path, slide_no, dest):

@@ -25,8 +25,12 @@ In restricted sandboxes, if apt fails with a setgroups error, add
    `{id, src, concepts:[{zh, en}], full, short, back}`.
    - `full`: a faithful translation; `short`: the same meaning, worded tighter;
      `back`: `short` translated back, for review.
-   - `concepts`: every content word of `src` with its English. Both variants must
+   - `concepts`: every content word of `src` with its English. `full` and `short` must
      contain every concept.
+   - `short2` (optional, for labels, flow boxes, titles and other tight spots): the
+     tightest wording a reader still understands; it may drop secondary words. It is
+     used only when the layout cannot be saved otherwise, and every use is listed in
+     the slide notes for review.
    - Only standard abbreviations (Assy, Qty, HV). Never invent one (no "M" for
      manual). Keep the title casing style of the deck.
 3. `python -m pptfit check-text translations.json glossary.json` until it prints
@@ -34,9 +38,11 @@ In restricted sandboxes, if apt fails with a setgroups error, add
 4. `python -m pptfit fit deck.pptx translations.json glossary.json out/` produces
    `out/final.pptx`, `out/cmp/s{N}.png` (original | result, anything still wrong is
    outlined in red), `out/summary.md` and `out/report.json`.
-5. Look at every `cmp` image. For slides listed under "needs human", either add a
-   tighter accurate variant (`short2`) for the units involved, or extend the code
-   (see below) and run step 4 again.
+5. Look at every `cmp` image. Layout comes first: slides that the accurate moves cannot
+   fix get a lossy pass (shorter wordings, fonts down to 70%), and every compromise is
+   written into that slide's notes as "[pptfit] Please check this slide". For slides
+   still listed under "needs human", add a tighter `short2` for the units involved or
+   extend the code (see below) and run step 4 again.
 
 ## How it works
 

@@ -8,6 +8,7 @@ on:
       chunks:
         description: parallel jobs
         default: "12"
+concurrency: {group: corpus, cancel-in-progress: true}
 jobs:
   list:
     runs-on: ubuntu-latest

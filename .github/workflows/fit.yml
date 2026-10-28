@@ -3,10 +3,19 @@ name: fit
 on:
   workflow_dispatch:
     inputs:
-      deck_url: {required: true}
-      translations_url: {required: true}
-      glossary_url: {required: false, default: ""}
-      parts: {description: parallel jobs, default: "6"}
+      deck_url:
+        description: temporary download link of the deck
+        required: true
+      translations_url:
+        description: temporary download link of translations.json
+        required: true
+      glossary_url:
+        description: temporary download link of glossary.json (optional)
+        required: false
+        default: ""
+      parts:
+        description: parallel jobs
+        default: "6"
 jobs:
   plan:
     runs-on: ubuntu-latest

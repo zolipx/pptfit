@@ -13,7 +13,8 @@ its layout, using the reference code at {REPO_URL}.
 1. `git clone {REPO_URL}` and follow "Setup" in its README.
 2. Download the deck and check the sha256.
 3. Follow "Workflow" steps 1–5 of the README exactly: list the units, write
-   `glossary.json` and `translations.json` yourself under the README's rules, run
+   `glossary.json` and `translations.json` yourself under the README's rules (give a
+   `short2` for every unit in a tight spot: labels, flow boxes, titles), run
    `check-text` until it reports 0 problems, run `fit`, then open every image in `out/cmp/`.
 4. For each slide listed under "needs human", add an accurate `short2` variant for the
    units involved or extend the code at the documented extension points, then run `fit`
