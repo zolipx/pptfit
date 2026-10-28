@@ -46,6 +46,21 @@ def new_state():
     return {"choice": {}, "scale": {}, "spacing": {}, "insets": [], "grow": {}, "shift": {}, "trim": {}}
 
 
+SEVERITY = {"INK_OUT": 2, "OFF_SLIDE": 2, "BOX_HIT": 2, "MOVED": 2}  # how painful for a person to repair; others 1
+
+
+def severity(v):
+    """Text over text is unreadable (3); text out of its box or the slide, boxes overlapping, a moved picture
+    break the layout (2); text touching a shape or line, a wrap, a split word, a size mismatch are cosmetic (1)."""
+    if v["code"] == "INK_HIT":
+        return 3 if v.get("on") == "text" else 1
+    return SEVERITY.get(v["code"], 1)
+
+
+def badness(viol):
+    return sum(severity(v) for v in viol)
+
+
 def cost(st, titles=()):
     c = sum((1 - f) * 10 for f in st["scale"].values()) + sum((1 - f) * 4 for f in st.get("spacing", {}).values())
     c += sum((abs(g[0]) + abs(g[1])) / 60 for g in st["grow"].values())
@@ -269,10 +284,11 @@ class Fitter:
 
     # ---------- search ----------
     def score(self, viol, st, info=None):
-        """Fewer violations first, then less total overshoot (partial progress counts), then lower
-        cost; a lonely short word on the last line of a paragraph costs a little extra."""
+        """Less severe violations first (never trade a cosmetic flaw for text over text), then less total
+        overshoot (partial progress counts), then lower cost; a lonely short word on the last line of a
+        paragraph costs a little extra."""
         widows = (info or {}).get("widows", 0)
-        return (len(viol), round(sum(x.get("amount", 1) for x in viol), 1), cost(st, self.titles) + 0.3 * widows)
+        return (badness(viol), round(sum(x.get("amount", 1) for x in viol), 1), cost(st, self.titles) + 0.3 * widows)
 
     def fit_slide(self, st, slide, budget=300, max_iter=15):
         t0 = time.time()
@@ -330,7 +346,7 @@ class Fitter:
                 self.lossy = True
                 st2, v2, hist2 = self.fit_slide(st, n, max(budget_per_slide - (time.time() - t1), 30))
                 self.lossy = False
-                if (len(v2), sum(x.get("amount", 1) for x in v2)) < (len(v), sum(x.get("amount", 1) for x in v)):
+                if (badness(v2), sum(x.get("amount", 1) for x in v2)) < (badness(v), sum(x.get("amount", 1) for x in v)):
                     st, v, hist = st2, v2, hist + [dict(h, step="lossy " + h["step"]) for h in hist2[1:]]
             report["slides"][n] = {"before": len(v0), "after": v, "history": hist}
             self.log("slide %d: %d -> %d" % (n, len(v0), len(v)))
@@ -411,7 +427,7 @@ class Fitter:
         for home, where in homes.items():  # where: {slide: this shape's id on that slide}
             alias = next(iter(where.values()))
             units = self.units_of[home]
-            best, best_n = (st, None), sum(len(report["slides"][s]["after"]) for s in where)
+            best, best_n = (st, None), sum(badness(report["slides"][s]["after"]) for s in where)
             steps = [("choice", {u["id"]: alt for u in units if alt in self.any_variant[u["id"]]}) for alt in ("short", "short2")]
             steps += [("scale", f) for f in (0.9, 0.8, 0.7)]
             for kind, v in steps:  # each step on top of the best so far
@@ -423,7 +439,7 @@ class Fitter:
                 else:
                     n["scale"][alias] = v
                 results = {s: self.evaluate(n, s)[0] for s in where}
-                k = sum(len(x) for x in results.values())
+                k = sum(badness(x) for x in results.values())
                 if k < best_n:
                     best, best_n = (n, results), k
                 if best_n == 0:
@@ -445,7 +461,7 @@ class Fitter:
                 for _, t in members:
                     n["scale"][t] = f
                 results = {s: self.evaluate(n, s)[0] for s in {s for s, _ in members}}
-                if sum(len(v) for v in results.values()) < sum(len(report["slides"][s]["after"]) for s in results):
+                if sum(badness(v) for v in results.values()) < sum(badness(report["slides"][s]["after"]) for s in results):
                     st = n
                     for s, v in results.items():
                         report["slides"][s]["after"] = v

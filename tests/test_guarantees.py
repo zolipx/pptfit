@@ -166,6 +166,9 @@ def test_line_and_ragged_text_obstacles():
             orig[1], _w("short", [430, 318, 200, 15], 2), _w("end", [645, 333, 40, 15], 2)]
     hits = {(x["id"], x.get("other")) for x in L.check(con, els, cand)[0] if x["code"] == "INK_HIT"}
     assert ("t", "ln") in hits and ("b", "logo") in hits, hits
+    from pptfit.fit import severity                            # text over a shape is cosmetic, text over text is not
+    assert {severity(x) for x in L.check(con, els, cand)[0] if x["code"] == "INK_HIT"} == {1}
+    assert severity({"code": "INK_HIT", "on": "text"}) == 3 > severity({"code": "INK_OUT"}) == 2
     # the original title's glyph box grazes the start of the rule: that licenses the graze, not more
     graze = [_w("标题", [62, 20, 90, 25], 0)] + orig[1:]
     con = L.constraints(els, graze, 720, 405)

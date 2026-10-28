@@ -252,7 +252,8 @@ def check(con, cand_els, words, expected_text=None, frozen_ids=(), floors=(FLOOR
             ob = obx.get(oid) if kind in ("box", "backdrop") else inks.get(oid)
             hit = (word_hit(owned[eid], ob) if kind == "box" else inter(ink, ob)) if ob else 0.0
             if hit > 1.25 * before + TOL:
-                v.append({"code": "INK_HIT", "id": eid, "other": oid, "amount": round((hit - before) ** 0.5, 1)})
+                v.append({"code": "INK_HIT", "id": eid, "other": oid, "amount": round((hit - before) ** 0.5, 1),
+                          "on": "text" if kind == "ink" else "shape"})
         if excess(ink, con["slide"]) > TOL:
             v.append({"code": "OFF_SLIDE", "id": eid, "amount": round(excess(ink, con["slide"]), 1)})
         own_layout = by_kind.get(eid) in ("chart", "smartart")  # these lay out their own labels; fix wording, not geometry
