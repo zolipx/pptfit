@@ -23,6 +23,9 @@ def check_unit(u, text, glossary=(), target_cjk=False):
     v = []
     if not target_cjk and CJK.search(text):
         v.append({"code": "LEFTOVER", "id": u["id"]})
+    for tok in sorted(set(re.findall(r"\{F\d+\}", u["src"]))):  # a field (slide number, date) must stay in place
+        if text.count(tok) != 1:
+            v.append({"code": "FIELD", "id": u["id"], "other": tok})
     for n in NUM.findall(u["src"]):
         if n not in text:
             v.append({"code": "NUMBERS", "id": u["id"], "other": n})

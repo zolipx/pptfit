@@ -19,23 +19,27 @@ FILLER = "system data process quality control station module output review updat
 def stretch(text, factor):
     lines = []
     for line in text.split("\n"):
-        if CJK.search(line):  # one CJK character is about two Latin letters wide; English needs ~3.5
-            n = len(CJK.findall(line))
-            words, k = [], 0
-            while sum(len(w) + 1 for w in words) < n * 3.5 * factor / 1.4:
-                words.append(FILLER[k % len(FILLER)]); k += 1
-            lines.append(" ".join(words).capitalize())
-            continue
-        words = line.split()
-        if not words:
-            lines.append(line)
-            continue
-        out, k = list(words), 0
-        while len(" ".join(out)) < factor * len(line):
-            out.append(re.sub(r"\d", "", words[k % len(words)]).strip(".,;:") or "more")
-            k += 1
-        lines.append(" ".join(out))
+        fields = re.findall(r"\{F\d+\}", line)  # fields stay, once each
+        line = re.sub(r"\s*\{F\d+\}\s*", " ", line).strip() if fields else line
+        lines.append(_stretch_line(line, factor) + "".join(" " + f for f in fields))
     return "\n".join(lines)
+
+
+def _stretch_line(line, factor):
+    if CJK.search(line):  # one CJK character is about two Latin letters wide; English needs ~3.5
+        n = len(CJK.findall(line))
+        words, k = [], 0
+        while sum(len(w) + 1 for w in words) < n * 3.5 * factor / 1.4:
+            words.append(FILLER[k % len(FILLER)]); k += 1
+        return " ".join(words).capitalize()
+    words = line.split()
+    if not words:
+        return line
+    out, k = list(words), 0
+    while len(" ".join(out)) < factor * len(line):
+        out.append(re.sub(r"\d", "", words[k % len(words)]).strip(".,;:") or "more")
+        k += 1
+    return " ".join(out)
 
 
 def translations(deck, expansion=1.4):

@@ -3,4 +3,5 @@ pymupdf
 pillow
 numpy
 scipy
+openpyxl
 pytest

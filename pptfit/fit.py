@@ -24,7 +24,7 @@ pass: `short`/`short2` wordings that lost a detail and fonts down to 70% become
 allowed. Every such compromise is written into the slide notes for a human to
 check, because fixing a word is easy and fixing a layout is not.
 """
-import copy, itertools, os, tempfile, threading, time
+import copy, itertools, os, re, tempfile, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
 from . import extract as X, layout as L, render as R, textcheck as T, units as U
@@ -34,6 +34,12 @@ STEPS = [1.0, 0.95, 0.9, 0.85, 0.8]
 LOSSY_FLOOR = 0.7  # second phase only, and always reported
 GAP = 3.0          # pt kept free around a grown box
 WORKERS = max(1, min(4, os.cpu_count() or 1))
+
+
+def slide_of(uid):
+    """Slide number of a unit or element id; None for layout and master units (L3_7#p0, M1_4#p0)."""
+    m = re.match(r"s(\d+)[_#]", uid)
+    return int(m.group(1)) if m else None
 
 
 def new_state():
@@ -74,6 +80,7 @@ class Fitter:
             self.units_of.setdefault(u["id"].split("#")[0].split("/r")[0], []).append(u)
         self.allowed = {u["id"]: T.allowed_variants(u, glossary) or ["full"] for u in translations}
         self.any_variant = {u["id"]: [k for k in ("full", "short", "short2") if u.get(k)] for u in translations}
+        self.mixed = {u["id"] for u in U.make_units(src_pptx) if u.get("mixed")}  # bold or coloured words inside a paragraph
         self.lossy = False  # second phase: layout first, wording may lose detail, font may go to 70%
         probe = Deck(src_pptx)
         self.spaced = {e: probe.has_spacing(e) for e in probe.idx}  # elements with explicit line/paragraph spacing
@@ -359,14 +366,24 @@ class Fitter:
         notes = {n: [advice(x, self.els) for x in r["after"]] for n, r in report["slides"].items() if r["after"]}
         for u in self.tr:  # wording that lost detail to save the layout: easy for a human to touch up
             v = st["choice"].get(u["id"], "full")
-            if T.check_unit(u, u.get(v) or "", self.gl):
-                slide = int(u["id"].split("_")[0].lstrip("s").split("#")[0])
+            slide = slide_of(u["id"])
+            if slide and T.check_unit(u, u.get(v) or "", self.gl):
                 notes.setdefault(slide, []).append("wording shortened to fit, check the meaning: '%s' -> '%s'"
                                                    % (u["src"][:40], (u.get(v) or "")[:60]))
+            if slide and u["id"] in self.mixed:
+                notes.setdefault(slide, []).append("part of this text was bold or coloured, now one style: '%s'"
+                                                   % (u.get(v) or u.get("full") or "")[:60])
         for eid, f in st["scale"].items():
             if f < L.FLOOR_BODY - 1e-6 and eid in self.els:
-                slide = int(eid.split("_")[0].lstrip("s"))
+                slide = slide_of(eid)
                 notes.setdefault(slide, []).append("font reduced to %d%% to fit: '%s'" % (round(f * 100), (self.els[eid].get("text") or "")[:30].replace("\n", " ")))
+        report["leftover"] = {}  # what still reads in the source language on the rendered result, whatever its origin
+        pdf = R.to_pdf(out_pptx)
+        for s in self.orig["slides"]:
+            left = [w["text"] for w in R.page_words(pdf, s["index"] - 1, self.sw, self.sh) if L.CJK.search(w["text"])]
+            if left:
+                report["leftover"][s["index"]] = left
+                notes.setdefault(s["index"], []).append("text still in the source language: %s" % " ".join(left)[:80])
         if notes:
             d = Deck(out_pptx)
             for n, lines in notes.items():

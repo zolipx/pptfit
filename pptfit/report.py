@@ -41,6 +41,8 @@ def make(src_pptx, final_pptx, rep, outdir, slide_w, slide_h, dpi=96):
     tv = Counter(v["code"] for v in rep.get("text_violations", []))
     lines += ["", "text checks: " + (" ".join("%s×%d" % kv for kv in tv.items()) or "all pass"),
               "needs human: " + (", ".join(str(x) for x in rep.get("needs_human", [])) or "none"),
+              "source-language text left on slides: " + (", ".join(str(x) for x in sorted(rep.get("leftover", {}), key=int)) or "none"),
+              "notes for the reviewer on slides: " + (", ".join(str(x) for x in rep.get("review", [])) or "none"),
               "seconds: %s" % rep.get("seconds")]
     open(os.path.join(outdir, "summary.md"), "w").write("\n".join(lines) + "\n")
     return os.path.join(outdir, "summary.md")

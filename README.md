@@ -10,7 +10,7 @@ specification; nothing in this code is specific to one deck.
 
 ```
 apt-get install -y --no-install-recommends libreoffice-impress fonts-liberation fonts-crosextra-carlito fonts-noto-cjk
-pip install python-pptx pymupdf pillow numpy scipy
+pip install python-pptx pymupdf pillow numpy scipy openpyxl
 ```
 
 In restricted sandboxes, if apt fails with a setgroups error, add
@@ -19,7 +19,9 @@ In restricted sandboxes, if apt fails with a setgroups error, add
 ## Workflow
 
 1. `python -m pptfit units deck.pptx > units.json` lists every piece of text: shape
-   paragraphs, table cells, chart and SmartArt strings, and notes.
+   paragraphs, table cells, chart and SmartArt paragraphs, notes, and the text of logos,
+   slogans and footers that live in the slide layouts and masters (ids `L3_7#p0`, `M1_4#p0`).
+   Paragraphs without words (numbers, a slide number) are left alone.
 2. **The agent translates.** It writes `glossary.json` (`[{zh, en, abbr:[]}]`, one
    English rendering per term) and `translations.json`, one record per unit:
    `{id, src, concepts:[{zh, en}], full, short, back}`.
@@ -33,6 +35,8 @@ In restricted sandboxes, if apt fails with a setgroups error, add
      the slide notes for review.
    - Only standard abbreviations (Assy, Qty, HV). Never invent one (no "M" for
      manual). Keep the title casing style of the deck.
+   - `{F0}`, `{F1}` in `src` are live fields (slide number, date): keep each exactly once
+     where it belongs in the sentence (`第{F0}页` -> `Page {F0}`).
 3. `python -m pptfit check-text translations.json glossary.json` until it prints
    0 problems.
 4. `python -m pptfit fit deck.pptx translations.json glossary.json out/` produces
@@ -98,8 +102,12 @@ then cost (how far the result drifts from the original).
   (`Fitter(latin=...)`): those fonts render English badly. Latin fonts are kept.
 - Renders with LibreOffice; PowerPoint wraps text slightly differently. A few points of
   tolerance are built in, but check the final file in PowerPoint.
-- Text inside images is not translated. Chart text is translated but its layout is not
-  fitted; use `short` for chart strings.
+- Text inside images is not translated. Chart text (and the chart's data sheet) is
+  translated but the chart's own layout is not fitted; use `short` for chart strings.
+- A paragraph is written back in its first run's format: a bold or coloured word inside it
+  loses that (`mixed: true` in `units.json`); the slide notes say where.
+- After fitting, every word still in the source language on the rendered slides is listed in
+  `summary.md` and in that slide's notes, wherever it came from.
 
 ## CI and benchmarks (GitHub Actions)
 

@@ -192,3 +192,54 @@ def test_chart_title_runs_are_one_unit():
     U.apply(path, [dict(u, full=en.get(u["src"], u["src"])) for u in units], out)
     ch2 = next(sh for sh in Presentation(out).slides[0].shapes if sh.has_chart).chart
     assert ch2.value_axis.axis_title.text_frame.text == "Sales (10k units)"
+    import io, openpyxl                                         # "Edit Data" shows the same words
+    wb = openpyxl.load_workbook(io.BytesIO(ch2.part.chart_workbook.xlsx_part.blob))
+    cells = {c.value for ws in wb.worksheets for row in ws.iter_rows() for c in row if isinstance(c.value, str)}
+    assert {"January", "February"} <= cells and "一月" not in cells, cells
+
+
+def _para(p, parts):
+    """Fill an <a:p> with runs and fields: parts like ["第", ("fld", "1"), "页"] or [("b", "3倍")]."""
+    from lxml import etree
+    for x in parts:
+        if isinstance(x, str):
+            r = etree.SubElement(p, U.qa("r"))
+        elif x[0] == "fld":
+            r = etree.SubElement(p, U.qa("fld"), id="{B6F15528-21DE-4FAA-801E-634DDDAF4B2B}", type="slidenum")
+        else:
+            r = etree.SubElement(p, U.qa("r"))
+            etree.SubElement(r, U.qa("rPr"), b="1")
+        etree.SubElement(r, U.qa("t")).text = x if isinstance(x, str) else x[1]
+
+
+def test_layout_text_fields_numbers_and_mixed_runs():
+    from pptx import Presentation
+    from pptx.util import Pt
+    prs = Presentation()
+    lay = prs.slide_layouts[6]
+    s = prs.slides.add_slide(lay)
+    tb = s.shapes.add_textbox(Pt(10), Pt(10), Pt(200), Pt(30))
+    tb.text_frame.text = "公司口号"
+    lay.shapes._spTree.append(copy.deepcopy(tb._element))     # a slogan that lives in the layout
+    s.shapes._spTree.remove(tb._element)
+    tx = s.shapes.add_textbox(Pt(10), Pt(100), Pt(300), Pt(90)).text_frame._txBody
+    for p in tx.findall(U.qa("p")):
+        tx.remove(p)
+    from lxml import etree
+    for parts in (["第", ("fld", "1"), "页"], ["12345"], ["利润增长", ("b", "3倍")]):
+        _para(etree.SubElement(tx, U.qa("p")), parts)
+    path = os.path.join(WORK, "inherited.pptx")
+    prs.save(path)
+    units = U.make_units(path)
+    by_src = {u["src"]: u for u in units}
+    assert by_src["公司口号"]["id"].startswith("L"), units
+    assert "第{F0}页" in by_src and "12345" not in by_src and "1" not in by_src, units   # no unit without words
+    assert by_src["利润增长3倍"].get("mixed") and not by_src["第{F0}页"].get("mixed")
+    assert any(v["code"] == "FIELD" for v in T.check_unit(by_src["第{F0}页"], "Page"))
+    en = {"公司口号": "Company motto", "第{F0}页": "Page {F0}", "利润增长3倍": "Profit up 3x"}
+    out = os.path.join(WORK, "inherited_en.pptx")
+    U.apply(path, [dict(u, full=en[u["src"]]) for u in units], out)
+    prs2 = Presentation(out)
+    assert "Company motto" in [sh.text_frame.text for sh in U.inherited_index(prs2).values() if sh.has_text_frame]
+    p0 = next(sh for sh in prs2.slides[0].shapes if sh.has_text_frame).text_frame._txBody.findall(U.qa("p"))[0]
+    assert U._para_text(p0, tokens=True) == "Page {F0}" and p0.find(U.qa("fld")) is not None
