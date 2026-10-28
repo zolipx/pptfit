@@ -21,6 +21,7 @@ from statistics import median
 TEXTY = ("text", "table", "chart", "smartart")
 VISIBLE_KINDS = ("picture", "line", "chart", "table", "smartart")
 TOL = 1.0          # pt
+LINE_MIN = 1.5     # pt: a line's box has zero height or width; overlap tests give it this stroke thickness
 FLOOR_BODY, FLOOR_TITLE = 0.8, 0.9
 
 
@@ -29,6 +30,20 @@ def inter(a, b):
     w = min(a[0] + a[2], b[0] + b[2]) - max(a[0], b[0])
     h = min(a[1] + a[3], b[1] + b[3]) - max(a[1], b[1])
     return w * h if w > 0 and h > 0 else 0.0
+
+
+def obox(e):
+    """Box for overlap tests: lines get a stroke thickness instead of a zero side."""
+    b = e["bbox"]
+    if e["kind"] != "line":
+        return b
+    w, h = max(b[2], LINE_MIN), max(b[3], LINE_MIN)
+    return [b[0] - (w - b[2]) / 2, b[1] - (h - b[3]) / 2, w, h]
+
+
+def word_hit(ws, b):
+    """Overlap of each word with box b, summed (pt^2). Word by word: the union box of a ragged text grazes corners its words never touch."""
+    return sum(inter(w["box"], b) for w in ws)
 
 
 def excess(inner, outer):
@@ -181,7 +196,7 @@ def constraints(slide_els, words, slide_w, slide_h):
         for v in vis:
             if v["id"] in (eid, con["container"].get(eid)) or excess(e["bbox"], v["bbox"]) <= 1:
                 continue  # its own box, its container, or something it sits on
-            if inter(ink, v["bbox"]) <= TOL:
+            if word_hit(owned[eid], obox(v)) <= TOL:
                 clear.append(["box", v["id"]])
         for oid, oink in inks.items():
             if oid != eid and inter(ink, oink) <= TOL:
@@ -217,6 +232,7 @@ def check(con, cand_els, words, expected_text=None, frozen_ids=(), floors=(FLOOR
     owned = assign(words, cand_els)
     inks = ink_boxes(owned)
     box = {e["id"]: e["bbox"] for e in cand_els}
+    obx = {e["id"]: obox(e) for e in cand_els}
     by_kind = {e["id"]: e["kind"] for e in cand_els}
     v = []
     for eid, ink in inks.items():
@@ -225,9 +241,10 @@ def check(con, cand_els, words, expected_text=None, frozen_ids=(), floors=(FLOOR
         if cid and cid in box and excess(ink, box[cid]) > allow:
             v.append({"code": "INK_OUT", "id": eid, "other": cid, "amount": round(excess(ink, box[cid]), 1)})
         for kind, oid in con["ink_clear"].get(eid, []):
-            ob = box.get(oid) if kind == "box" else inks.get(oid)
-            if ob and inter(ink, ob) > TOL:
-                v.append({"code": "INK_HIT", "id": eid, "other": oid, "amount": round(inter(ink, ob) ** 0.5, 1)})
+            ob = obx.get(oid) if kind == "box" else inks.get(oid)
+            hit = (word_hit(owned[eid], ob) if kind == "box" else inter(ink, ob)) if ob else 0.0
+            if hit > TOL:
+                v.append({"code": "INK_HIT", "id": eid, "other": oid, "amount": round(hit ** 0.5, 1)})
         if excess(ink, con["slide"]) > TOL:
             v.append({"code": "OFF_SLIDE", "id": eid, "amount": round(excess(ink, con["slide"]), 1)})
         own_layout = by_kind.get(eid) in ("chart", "smartart")  # these lay out their own labels; fix wording, not geometry

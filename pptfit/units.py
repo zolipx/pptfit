@@ -6,8 +6,8 @@ file, so the same code works on any deck:
 
     s4_12#p0          paragraph 0 of shape 12 on slide 4 (groups: s4_7/12#p0)
     s5_3/r1c2#p0      table cell row 1, col 2
-    s9_8#c3           chart string 3 (matched by its source text)
-    s2_5#d0           SmartArt string 0 (matched by its source text)
+    s9_8#c3           chart string 3: a title/label paragraph or a category/series name (matched by its source text)
+    s2_5#d0           SmartArt paragraph 0 (matched by its source text)
     s4#notes#p1       notes paragraph 1
 
 Translations file: [{id, src, full, short, concepts:[{zh,en}], back}], written by
@@ -83,17 +83,17 @@ def make_units(pptx_path):
                     add_txbody("%s/r%dc%d" % (eid, r, c), cell._tc.find(qa("txBody")))
         if getattr(sh, "has_chart", False) and sh.has_chart:
             seen = []
-            for node in _chart_text_nodes(sh.chart._chartSpace):
-                if node.text and node.text.strip() and node.text not in seen and not re.fullmatch(r"[-\d.,%\s]+", node.text):
-                    seen.append(node.text)
+            for s, _ in _texts(sh.chart._chartSpace, chart=True):
+                if s not in seen and not re.fullmatch(r"[-\d.,%\s]+", s):
+                    seen.append(s)
             units += [{"id": "%s#c%d" % (eid, k), "src": t} for k, t in enumerate(seen)]
         rel = el.find(".//{%s}relIds" % DGM)
         if rel is not None:  # SmartArt: texts live in the diagram data part
             data = sh.part.related_part(rel.get(R_DM))
             seen = []
-            for t in etree.fromstring(data.blob).iter(qa("t")):
-                if t.text and t.text.strip() and t.text not in seen:
-                    seen.append(t.text)
+            for s, _ in _texts(etree.fromstring(data.blob)):
+                if s not in seen:
+                    seen.append(s)
             units += [{"id": "%s#d%d" % (eid, k), "src": t} for k, t in enumerate(seen)]
     for i, slide in enumerate(prs.slides, 1):
         if slide.has_notes_slide:
@@ -101,14 +101,22 @@ def make_units(pptx_path):
     return units
 
 
-def _chart_text_nodes(root):
-    for t in root.iter(qa("t")):
-        yield t
-    for v in root.iter("{%s}v" % C):
-        anc = [a.tag.split("}")[-1] for a in v.iterancestors()]
-        if any(a.startswith("num") for a in anc[:3]):
-            continue
-        yield v
+def _texts(root, chart=False):
+    """[(source text, writer)] for the strings under root: each rich-text paragraph as a whole (one title
+    is often split into runs, e.g. "销量（" "万件" "）"; translating runs apart garbles it), and for
+    charts the cached category and series names."""
+    out = []
+    for p in root.iter(qa("p")):
+        s = _para_text(p)
+        if s.strip():
+            out.append((s, lambda text, p=p: set_paragraph_text(p, text)))
+    if chart:
+        for v in root.iter("{%s}v" % C):
+            anc = [a.tag.split("}")[-1] for a in v.iterancestors()]
+            if any(a.startswith("num") for a in anc[:3]) or not (v.text and v.text.strip()):
+                continue
+            out.append((v.text, lambda text, v=v: setattr(v, "text", text)))
+    return out
 
 
 def set_paragraph_text(p, text):
@@ -174,15 +182,16 @@ def apply(pptx_in, translations, pptx_out, choice=None, default="full"):
     if by_src:
         for sh in idx.values():
             if getattr(sh, "has_chart", False) and sh.has_chart:
-                for node in _chart_text_nodes(sh.chart._chartSpace):
-                    if node.text in by_src:
-                        node.text = by_src[node.text]
+                for s, write in _texts(sh.chart._chartSpace, chart=True):
+                    if s in by_src:
+                        write(by_src[s])
         for part in _diagram_parts(prs):
             root = etree.fromstring(part.blob)
             hit = False
-            for t in root.iter(qa("t")):
-                if t.text in by_src:
-                    t.text, hit = by_src[t.text], True
+            for s, write in _texts(root):
+                if s in by_src:
+                    write(by_src[s])
+                    hit = True
             if hit:
                 part._blob = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone=True)
     prs.save(pptx_out)

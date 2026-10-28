@@ -111,3 +111,84 @@ def test_accuracy_checks(deck):
     assert any(v["code"] == "CONCEPT" for v in T.check_unit(u, dropped))
     assert any(v["code"] == "LEFTOVER" for v in T.check_unit(u, u["src"]))
     assert any(v["code"] == "DUP_WORD" for v in T.check_unit(u, "cup cup " + u["full"]))
+
+
+# ---------- mechanisms that need no render ----------
+def _tip(d, eid):
+    from pptfit.ops import WEDGE
+    prst, _, names, vals = d._callout(eid)
+    x, y, w, h = d.geometry(eid)
+    if prst in WEDGE:
+        return x + w / 2 + vals["adj1"] * w / 1e5, y + h / 2 + vals["adj2"] * h / 1e5
+    return x + vals[names[-1]] * w / 1e5, y + vals[names[-2]] * h / 1e5
+
+
+def test_callout_tip_stays():
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.util import Pt
+    prs = Presentation()
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    a = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGULAR_CALLOUT, Pt(50), Pt(50), Pt(80), Pt(20))
+    a.adjustments[0], a.adjustments[1] = 0.29, 4.5            # tip far below the box, like a label on a photo
+    b = s.shapes.add_shape(MSO_SHAPE.LINE_CALLOUT_1, Pt(300), Pt(50), Pt(80), Pt(20))  # default adjust values
+    path = os.path.join(WORK, "callout.pptx")
+    prs.save(path)
+    d = Deck(path)
+    for sh in (a, b):
+        eid = "s1_%d" % sh.shape_id
+        before = _tip(d, eid)
+        d.resize(eid, 0, 25)
+        d.move(eid, 10, -5)
+        after = _tip(d, eid)
+        assert max(abs(p - q) for p, q in zip(before, after)) < 6350, (eid, before, after)  # within 0.5 pt
+
+
+def _el(eid, kind, bbox, **kw):
+    e = {"id": eid, "kind": kind, "bbox": bbox, "text": ""}
+    e.update(kw)
+    return e
+
+
+def _w(text, box, block):
+    return {"text": text, "box": box, "block": block, "size": 14}
+
+
+def test_line_and_ragged_text_obstacles():
+    els = [_el("t", "text", [60, 17, 360, 29], text="标题", is_title=True),
+           _el("ln", "line", [148, 34, 549, 0], visible_line=True),   # a rule after the title: zero height
+           _el("logo", "picture", [640, 327, 77, 52]),
+           _el("b", "text", [428, 55, 310, 330], text="长 短")]
+    orig = [_w("标题", [62, 20, 60, 25], 0), _w("长", [430, 60, 288, 15], 1), _w("短", [430, 318, 200, 15], 2)]
+    con = L.constraints(els, orig, 720, 405)                   # the body's union box grazes the logo, no word does
+    assert L.check(con, els, orig)[0] == []
+    cand = [_w("Title", [62, 20, 70, 25], 0), _w("words", [140, 20, 60, 25], 0),
+            orig[1], _w("short", [430, 318, 200, 15], 2), _w("end", [645, 333, 40, 15], 2)]
+    hits = {(x["id"], x.get("other")) for x in L.check(con, els, cand)[0] if x["code"] == "INK_HIT"}
+    assert ("t", "ln") in hits and ("b", "logo") in hits, hits
+
+
+def test_chart_title_runs_are_one_unit():
+    from pptx import Presentation
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+    from pptx.util import Pt
+    prs = Presentation()
+    s = prs.slides.add_slide(prs.slide_layouts[6])
+    cd = CategoryChartData()
+    cd.categories = ["一月", "二月"]
+    cd.add_series("销量", (1000, 1200))
+    ch = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Pt(50), Pt(50), Pt(300), Pt(200), cd).chart
+    p = ch.value_axis.axis_title.text_frame.paragraphs[0]
+    for t in ("销量（", "万件", "）"):                          # one title split into runs
+        p.add_run().text = t
+    path = os.path.join(WORK, "chart.pptx")
+    prs.save(path)
+    units = [u for u in U.make_units(path) if "#c" in u["id"]]
+    srcs = {u["src"] for u in units}
+    assert "销量（万件）" in srcs and "万件" not in srcs, srcs
+    en = {"销量（万件）": "Sales (10k units)", "一月": "January", "二月": "February", "销量": "Sales"}
+    out = os.path.join(WORK, "chart_en.pptx")
+    U.apply(path, [dict(u, full=en.get(u["src"], u["src"])) for u in units], out)
+    ch2 = next(sh for sh in Presentation(out).slides[0].shapes if sh.has_chart).chart
+    assert ch2.value_axis.axis_title.text_frame.text == "Sales (10k units)"

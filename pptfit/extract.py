@@ -241,9 +241,10 @@ def chart_strings(shape):
         el = shape.chart._element
     except Exception:
         return out
-    for t in el.findall(".//" + qa("t")):
-        if t.text and t.text.strip() and t.text not in out:
-            out.append(t.text)
+    for p in el.iter(qa("p")):  # a paragraph as a whole: titles are often split into runs
+        text = "".join(t.text or "" for t in p.iter(qa("t")))
+        if text.strip() and text not in out:
+            out.append(text)
     for v in el.findall(".//" + "{%s}v" % C):
         parent = v.getparent()
         gp = parent.getparent() if parent is not None else None

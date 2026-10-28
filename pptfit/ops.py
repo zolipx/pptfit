@@ -10,6 +10,8 @@ Children of groups are converted to the group's own coordinate space, so callers
 always think in slide points. Extension point: add a method here, then offer it
 as a candidate move in fit.py.
 """
+import re
+
 from lxml import etree
 from pptx import Presentation
 
@@ -19,6 +21,14 @@ A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 EMU = 12700
 qa = lambda t: "{%s}%s" % (A, t)
+
+# Callouts point at something with a tail whose adjust values are fractions of the shape's own size,
+# so a plain resize or move drags the tip along. Defaults from the OOXML preset geometry definitions.
+WEDGE = ("wedgeRectCallout", "wedgeRoundRectCallout", "wedgeEllipseCallout", "cloudCallout")
+WEDGE_DEFAULT = {"adj1": -20833, "adj2": 62500}  # tip offset from the centre, 1/100000 of width, height
+LINE_CALLOUT = re.compile(r"(?:borderC|c|accentC|accentBorderC)allout([123])")
+LINE_DEFAULT = {1: [18750, -8333, 112500, -38333], 2: [18750, -8333, 18750, -16667, 112500, -46667],
+                3: [18750, -8333, 18750, -16667, 100000, -16667, 112963, -8333]}  # (y, x) pairs from the top-left
 
 
 class Deck:
@@ -65,21 +75,69 @@ class Deck:
         x.find(qa("off")).set("x", str(int(round(g[0])))); x.find(qa("off")).set("y", str(int(round(g[1]))))
         x.find(qa("ext")).set("cx", str(max(int(round(g[2])), 1))); x.find(qa("ext")).set("cy", str(max(int(round(g[3])), 1)))
 
+    def _callout(self, eid):
+        """(prst, avLst, adjust names, values) of a callout shape, else None."""
+        g = self.idx[eid]._element.find(".//" + qa("prstGeom"))
+        prst = g.get("prst", "") if g is not None else ""
+        m = LINE_CALLOUT.fullmatch(prst)
+        if prst in WEDGE:
+            names, vals = ["adj1", "adj2"], dict(WEDGE_DEFAULT)
+        elif m:
+            n = int(m.group(1))
+            names = ["adj%d" % (i + 1) for i in range(2 * n + 2)]
+            vals = dict(zip(names, LINE_DEFAULT[n]))
+        else:
+            return None
+        av = g.find(qa("avLst"))
+        if av is None:
+            av = etree.SubElement(g, qa("avLst"))
+        for gd in av.findall(qa("gd")):
+            f = (gd.get("fmla") or "").split()
+            if len(f) == 2 and f[0] == "val":
+                vals[gd.get("name")] = int(f[1])
+        return prst, av, names, vals
+
+    def _place(self, eid, old, new):
+        """Set new geometry; a callout's tip keeps its absolute place (the line's start stays on the box)."""
+        c = self._callout(eid)
+        self._set(eid, new)
+        if not c:
+            return
+        prst, av, names, vals = c
+        ox, oy, ow, oh = old
+        nx, ny, nw, nh = new[0], new[1], max(new[2], 1), max(new[3], 1)
+        if prst in WEDGE:
+            px, py = ox + ow / 2 + vals["adj1"] * ow / 1e5, oy + oh / 2 + vals["adj2"] * oh / 1e5
+            vals["adj1"], vals["adj2"] = (px - nx - nw / 2) / nw * 1e5, (py - ny - nh / 2) / nh * 1e5
+        else:
+            for k in range(1, len(names) // 2):
+                ya, xa = names[2 * k], names[2 * k + 1]
+                py, px = oy + vals[ya] * oh / 1e5, ox + vals[xa] * ow / 1e5
+                vals[ya], vals[xa] = (py - ny) / nh * 1e5, (px - nx) / nw * 1e5
+        have = {gd.get("name"): gd for gd in av.findall(qa("gd"))}
+        for n in names:
+            gd = have.get(n)
+            if gd is None:
+                gd = etree.SubElement(av, qa("gd"), name=n)
+            gd.set("fmla", "val %d" % round(vals[n]))
+
     def resize(self, eid, dw=0.0, dh=0.0, ax="left", ay="top"):
         """Grow (or shrink) by dw/dh pt, keeping the anchor side or the centre fixed."""
         sx, sy = self._scale(eid)
         g = self.geometry(eid)
+        old = list(g)
         rw, rh = dw / sx, dh / sy
         g[0] -= {"left": 0, "center": rw / 2, "right": rw}[ax]
         g[1] -= {"top": 0, "center": rh / 2, "bottom": rh}[ay]
         g[2] += rw; g[3] += rh
-        self._set(eid, g)
+        self._place(eid, old, g)
 
     def move(self, eid, dx=0.0, dy=0.0):
         sx, sy = self._scale(eid)
         g = self.geometry(eid)
+        old = list(g)
         g[0] += dx / sx; g[1] += dy / sy
-        self._set(eid, g)
+        self._place(eid, old, g)
 
     def trim_line(self, eid, end, d):
         """Shorten a horizontal/vertical line from one end by d pt."""
