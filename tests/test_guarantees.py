@@ -166,6 +166,18 @@ def test_line_and_ragged_text_obstacles():
             orig[1], _w("short", [430, 318, 200, 15], 2), _w("end", [645, 333, 40, 15], 2)]
     hits = {(x["id"], x.get("other")) for x in L.check(con, els, cand)[0] if x["code"] == "INK_HIT"}
     assert ("t", "ln") in hits and ("b", "logo") in hits, hits
+    # the original title's glyph box grazes the start of the rule: that licenses the graze, not more
+    graze = [_w("标题", [62, 20, 90, 25], 0)] + orig[1:]
+    con = L.constraints(els, graze, 720, 405)
+    assert L.check(con, els, graze)[0] == []
+    longer = [_w("Plan", [62, 20, 60, 25], 0), _w("layout", [126, 20, 70, 25], 0)] + orig[1:]
+    assert ("t", "ln") in {(x["id"], x.get("other")) for x in L.check(con, els, longer)[0] if x["code"] == "INK_HIT"}
+    # a caption that sat half on a photo may keep sitting on it
+    photo = [_el("ph", "picture", [100, 200, 200, 100]), _el("cap", "text", [250, 280, 200, 30], text="说明")]
+    cap0 = [_w("说明", [250, 285, 100, 20], 0)]
+    con = L.constraints(photo, cap0, 720, 405)
+    cap1 = [_w("Caption", [250, 285, 80, 20], 0), _w("text", [335, 285, 50, 20], 0)]
+    assert not [x for x in L.check(con, photo, cap1)[0] if x["code"] == "INK_HIT"]
 
 
 def test_chart_title_runs_are_one_unit():
