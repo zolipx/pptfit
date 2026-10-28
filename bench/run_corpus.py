@@ -43,7 +43,10 @@ for deck in sys.argv[2:]:
             "violations_after": sum(len(r["after"]) for r in rep["slides"].values()),
             "codes_after": sorted({v["code"] for r in rep["slides"].values() for v in r["after"]}),
             "left": {str(n): [[v["code"], v["id"], v.get("other")] for v in r["after"]] for n, r in rep["slides"].items() if r["after"]},
-            "master_units": sum(1 for u in tr if u["id"][0] in "LM"),  # layout and master text, translated but never moved by the fitter
+            "master_units": sum(1 for u in tr if u["id"][0] in "LM"),  # layout and master text
+            "history": {str(n): [h["step"] + ("@" + ",".join(h["target"]) if h.get("target") else "") for h in r["history"][1:]]
+                        for n, r in rep["slides"].items() if r["history"][1:]},
+            "state": {k: v for k, v in rep["state"].items() if k in ("grow", "shift", "scale", "trim", "spacing") and v},
             "min_scale": min(scales) if scales else 1.0, "edits": sum(len(r["history"]) - 1 for r in rep["slides"].values() if r["history"]),
         })
     except Exception as e:  # noqa: BLE001
