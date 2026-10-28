@@ -24,6 +24,7 @@ TOL = 1.0          # pt
 LINE_MIN = 1.5     # pt: a line's box has zero height or width; overlap tests give it this stroke thickness
 GRAZE = 0.1        # an original that only grazed an obstacle (<= 10% of its word area) may not overlap it more
 BACKDROP = 0.15    # an obstacle covering >= 15% of the slide is background art, judged against the whole text block
+ACROSS = 0.05      # the original text block lay across an obstacle (> 5% of the block's area): it may stay across it
 FLOOR_BODY, FLOOR_TITLE = 0.8, 0.9
 
 
@@ -201,6 +202,8 @@ def constraints(slide_els, words, slide_w, slide_h):
             if area(v["bbox"]) >= BACKDROP * slide_w * slide_h:  # text routinely runs across background art and watermarks
                 if inter(ink, v["bbox"]) <= TOL:
                     clear.append(["backdrop", v["id"], 0.0])
+                continue
+            if inter(ink, obox(v)) > ACROSS * area(ink):  # text set across decorative shapes on purpose, as in the original
                 continue
             hit0 = word_hit(owned[eid], obox(v))  # a title whose last glyph box grazes the start of a rule
             if hit0 <= TOL or hit0 <= GRAZE * sum(area(w["box"]) for w in owned[eid]):

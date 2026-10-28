@@ -181,6 +181,12 @@ def test_line_and_ragged_text_obstacles():
     con = L.constraints(art, blk, 720, 405)
     grown = [blk[0], _w("Two", [50, 230, 80, 15], 1), _w("more", [135, 230, 120, 15], 1)]
     assert not [x for x in L.check(con, art, grown)[0] if x["code"] == "INK_HIT"]
+    # a text block set across a decorative shape (no word on it, but the block lies across it) may stay across it
+    deco = [_el("arc", "picture", [200, 150, 60, 120]), _el("t3", "text", [50, 140, 400, 140], text="甲 乙")]
+    two = [_w("甲", [50, 150, 140, 15], 0), _w("乙", [270, 150, 140, 15], 0), _w("甲", [50, 250, 140, 15], 1)]
+    con = L.constraints(deco, two, 720, 405)
+    wider = two[:2] + [_w("Longer", [50, 250, 250, 15], 1)]
+    assert not [x for x in L.check(con, deco, wider)[0] if x["code"] == "INK_HIT"]
     # a caption that sat half on a photo may keep sitting on it
     photo = [_el("ph", "picture", [100, 200, 200, 100]), _el("cap", "text", [250, 280, 200, 30], text="说明")]
     cap0 = [_w("说明", [250, 285, 100, 20], 0)]
