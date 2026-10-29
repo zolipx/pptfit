@@ -8,12 +8,15 @@ specification; nothing in this code is specific to one deck.
 
 ## Setup
 
+Needs LibreOffice (`soffice` on the PATH), the fonts Liberation, Carlito and Noto CJK, and
+`pip install python-pptx pymupdf pillow numpy scipy openpyxl`. On Debian or Ubuntu:
+
 ```
 apt-get install -y --no-install-recommends libreoffice-impress fonts-liberation fonts-crosextra-carlito fonts-noto-cjk
 pip install python-pptx pymupdf pillow numpy scipy openpyxl
 ```
 
-In restricted sandboxes, if apt fails with a setgroups error, add
+If apt fails there with a setgroups error, add
 `-o APT::Sandbox::User=root -o Dir::Cache::archives=$PWD/tmp/apt/archives`.
 
 ## Workflow

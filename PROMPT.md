@@ -1,7 +1,7 @@
 # Task prompt template
 
-Fill in the `{...}` fields and send the text below to any agent that has a Linux
-sandbox (Grok Build, ChatGPT, Claude, ...). Everything about *how* lives in this
+Fill in the `{...}` fields and send the text below to any agent that can run code
+(Grok Build, ChatGPT, Claude, ...). Everything about *how* lives in this
 repository; the prompt only says *what* to do this time.
 
 - By hand: attach the .pptx to the message; `{DECK}` = `attached to this message`.
@@ -11,7 +11,7 @@ download link (uguu.se, kept 3 hours).
 
 ---
 
-You are an unattended agent with a Linux sandbox. Translate the PowerPoint deck
+You are an unattended agent that can run code. Translate the PowerPoint deck
 {DECK} from {SOURCE_LANGUAGE} into {TARGET_LANGUAGE} and keep its layout, using the
 reference code at {REPO_URL}.
 
@@ -43,5 +43,5 @@ The goal is a deck a person can finish in a few minutes, not a perfect one.
    line per slide: what you saw and what you left for the reviewer.
 
 Working rules: every message includes a tool call until the delivery is done (a message
-with text only ends your turn); run commands longer than a minute with `nohup` and poll
-their log; write files in pieces of at most 250 lines.
+with text only ends your turn); run commands longer than a minute in the background and
+poll their log; write files in pieces of at most 250 lines.
