@@ -4,11 +4,15 @@ Fill in the `{...}` fields and send the text below to any agent that has a Linux
 sandbox (Grok Build, ChatGPT, Claude, ...). Everything about *how* lives in this
 repository; the prompt only says *what* to do this time.
 
+- By hand: attach the .pptx to the message; `{DECK}` = `attached to this message`,
+  `{DELIVERY}` = `attach the zip to your reply`.
+- Unattended tests: `{DECK}` = `at <url> (sha256 <hash>)`, `{DELIVERY}` = `upload it with <command>`.
+
 ---
 
-You are an unattended agent with a Linux sandbox. Translate the PowerPoint deck at
-{DECK_URL} (sha256 {DECK_SHA256}) from {SOURCE_LANGUAGE} into {TARGET_LANGUAGE} and keep
-its layout, using the reference code at {REPO_URL}.
+You are an unattended agent with a Linux sandbox. Translate the PowerPoint deck
+{DECK} from {SOURCE_LANGUAGE} into {TARGET_LANGUAGE} and keep its layout, using the
+reference code at {REPO_URL}.
 
 The goal is a deck a person can finish in a few minutes, not a perfect one.
 - Must be right (slow for a person to repair): positions and sizes of shapes, groups, flow
@@ -18,7 +22,7 @@ The goal is a deck a person can finish in a few minutes, not a perfect one.
   punctuation, a label to retype. Note these for the reviewer instead of chasing them.
 
 1. `git clone {REPO_URL}` and follow "Setup" in its README.
-2. Download the deck and check the sha256.
+2. Get the deck: the attached file, or download the link and check its sha256.
 3. Follow "Workflow" steps 1–4 of the README exactly: list the units, write
    `glossary.json` and `translations.json` yourself under the README's rules (give a
    `short2` for every unit in a tight spot: labels, flow boxes, titles), run
@@ -31,9 +35,8 @@ The goal is a deck a person can finish in a few minutes, not a perfect one.
    - Fixed by a person in seconds: `python -m pptfit note out/final.pptx N "<what to check>"`.
    Stop when only the second kind is left, or after two extra `fit` runs; note what remains.
 5. Deliver: zip `out/final.pptx`, `out/cmp/`, `out/summary.md`, `translations.json` and
-   `glossary.json`, upload it with `{UPLOAD_COMMAND}`, and reply with the link, the
-   contents of `summary.md`, and one line per slide: what you saw and what you left for the
-   reviewer.
+   `glossary.json`, {DELIVERY}, and reply with the contents of `summary.md` and one
+   line per slide: what you saw and what you left for the reviewer.
 
 Working rules: every message includes a tool call until the delivery is done (a message
 with text only ends your turn); run commands longer than a minute with `nohup` and poll
