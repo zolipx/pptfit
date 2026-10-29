@@ -5,8 +5,10 @@ Fill in the `{...}` fields and send the text below to any agent that can run cod
 repository; the prompt only says *what* to do this time.
 
 - By hand: attach the .pptx to the message; `{DECK}` = `attached to this message`. Agents
-  without internet access (e.g. ChatGPT's sandbox): also attach the repository as a zip,
-  https://github.com/zolipx/pptfit/archive/refs/heads/master.zip
+  without internet access (ChatGPT's sandbox is offline by default): also attach the
+  repository as a zip, https://github.com/zolipx/pptfit/archive/refs/heads/master.zip
+  (ChatGPT Work can go online instead: Settings > Data controls > Work network access >
+  Allow public internet access.)
 - Unattended tests: `{DECK}` = `at <url> (sha256 <hash>)`.
 The result comes back twice: attached to the reply (where the chat allows files) and as a
 download link (uguu.se, kept 3 hours).
