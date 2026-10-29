@@ -4,7 +4,9 @@ Fill in the `{...}` fields and send the text below to any agent that can run cod
 (Grok Build, ChatGPT, Claude, ...). Everything about *how* lives in this
 repository; the prompt only says *what* to do this time.
 
-- By hand: attach the .pptx to the message; `{DECK}` = `attached to this message`.
+- By hand: attach the .pptx to the message; `{DECK}` = `attached to this message`. Agents
+  without internet access (e.g. ChatGPT's sandbox): also attach the repository as a zip,
+  https://github.com/zolipx/pptfit/archive/refs/heads/master.zip
 - Unattended tests: `{DECK}` = `at <url> (sha256 <hash>)`.
 The result comes back twice: attached to the reply (where the chat allows files) and as a
 download link (uguu.se, kept 3 hours).
@@ -22,7 +24,8 @@ The goal is a deck a person can finish in a few minutes, not a perfect one.
 - May stay imperfect (a person fixes it in seconds): a wording a little long or short,
   punctuation, a label to retype. Note these for the reviewer instead of chasing them.
 
-1. `git clone {REPO_URL}` and follow "Setup" in its README.
+1. Get the code: `git clone {REPO_URL}`, or unzip the attached copy if you cannot reach it.
+   Follow "Setup" in its README.
 2. Get the deck: the attached file, or download the link and check its sha256.
 3. Follow "Workflow" steps 1–4 of the README exactly: list the units, write
    `glossary.json` and `translations.json` yourself under the README's rules (give a
@@ -39,7 +42,7 @@ The goal is a deck a person can finish in a few minutes, not a perfect one.
    `glossary.json`, then send it both ways: attach the zip to your reply if this chat accepts
    files, and also upload it with `curl -sS -F "files[]=@<file>" https://uguu.se/upload`
    (JSON reply, the link is in files[0].url; .zip is refused, so base64 it into a .txt first)
-   and put the link in your reply. Reply also with the contents of `summary.md` and one
+   and put the link in your reply (if uploading is blocked, attach only and say so). Reply also with the contents of `summary.md` and one
    line per slide: what you saw and what you left for the reviewer.
 
 Working rules: every message includes a tool call until the delivery is done (a message
