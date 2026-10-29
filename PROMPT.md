@@ -4,9 +4,10 @@ Fill in the `{...}` fields and send the text below to any agent that has a Linux
 sandbox (Grok Build, ChatGPT, Claude, ...). Everything about *how* lives in this
 repository; the prompt only says *what* to do this time.
 
-- By hand: attach the .pptx to the message; `{DECK}` = `attached to this message`,
-  `{DELIVERY}` = `attach the zip to your reply`.
-- Unattended tests: `{DECK}` = `at <url> (sha256 <hash>)`, `{DELIVERY}` = `upload it with <command>`.
+- By hand: attach the .pptx to the message; `{DECK}` = `attached to this message`.
+- Unattended tests: `{DECK}` = `at <url> (sha256 <hash>)`.
+The result comes back twice: attached to the reply (where the chat allows files) and as a
+download link (uguu.se, kept 3 hours).
 
 ---
 
@@ -35,7 +36,10 @@ The goal is a deck a person can finish in a few minutes, not a perfect one.
    - Fixed by a person in seconds: `python -m pptfit note out/final.pptx N "<what to check>"`.
    Stop when only the second kind is left, or after two extra `fit` runs; note what remains.
 5. Deliver: zip `out/final.pptx`, `out/cmp/`, `out/summary.md`, `translations.json` and
-   `glossary.json`, {DELIVERY}, and reply with the contents of `summary.md` and one
+   `glossary.json`, then send it both ways: attach the zip to your reply if this chat accepts
+   files, and also upload it with `curl -sS -F "files[]=@<file>" https://uguu.se/upload`
+   (JSON reply, the link is in files[0].url; .zip is refused, so base64 it into a .txt first)
+   and put the link in your reply. Reply also with the contents of `summary.md` and one
    line per slide: what you saw and what you left for the reviewer.
 
 Working rules: every message includes a tool call until the delivery is done (a message
